@@ -259,13 +259,16 @@ def record_dataset(world):
     # print(location.x)
     # print(waypoint.transform.location, waypoint.transform.rotation)
     # print("lane_width", waypoint.lane_width) # lane_width = 3.5 constant
-    write_in_csv(location, waypoint.transform, waypoint.lane_width)
+    control = world.vehicle.get_control()
+    write_in_csv(location, waypoint.transform, waypoint.lane_width, control)
 
-def write_in_csv(location, waypoint_tf, lane_width, ds='localization_ds.csv'):
+def write_in_csv(location, waypoint_tf, lane_width, control, ds='localization_ds.csv'):
     # example of waypoint_tf Location(x=394.307587, y=-294.747772, z=0.000000) Rotation(pitch=360.000000, yaw=246.589417, roll=0.000000)
-    # location.z, rotation.pitch, rotation.roll may be helpful with ControlLoss scenario, where the chasis changes
+    #   location.z, rotation.pitch, rotation.roll may be helpful with ControlLoss scenario, where the chasis changes
+    # example of vehicle control: VehicleControl(throttle=1.000000, steer=-0.001398, brake=0.000000, hand_brake=False, reverse=False, manual_gear_shift=False, gear=3)
+    # TODO: check whether all control params are needed 
     row = [location.x, location.y, location.z, lane_width, waypoint_tf.location.x, waypoint_tf.location.y, waypoint_tf.location.z, \
-        waypoint_tf.rotation.pitch, waypoint_tf.rotation.yaw, waypoint_tf.rotation.roll]
+        waypoint_tf.rotation.pitch, waypoint_tf.rotation.yaw, waypoint_tf.rotation.roll, control.throttle, control.steer]
 
     # append the current data to csv file
     with open(ds, 'a+') as csvFile:
