@@ -104,23 +104,27 @@ export PYTHONPATH=$PYTHONPATH:${CARLA_ROOT}/PythonAPI/carla/:${ROOT_SCENARIO_RUN
 (`coiltraine` environment is not necessary if all other required packages are installed)
 
 2. Run the commands
-* collect data from `manual_control.py`, press `P` on keyboard to enable `autopilot` <br/>
-modify ~L265 (about line 265) `def write_in_csv(location, waypoint_tf, lane_width, control, ds='localization_relative_coords_ds.csv')` to change dataset filename.
+* To collect data from `manual_control.py`, press `P` on keyboard to enable `autopilot` <br/>
+modify ~L265 (about line 265) `def write_in_csv(location, waypoint_tf, lane_width, control, ds='localization_relative_coords_ds.csv')` to change dataset filename. <br/>
+*Add `record_dataset` and `write_in_csv` methods to original `manual_control.py`
+
 ```
 ruihan@depend-XPS-8930:~/UnrealEngine_4.22/carla/Unreal/CarlaUE4/Saved/StagedBuilds/LinuxNoEditor$ ./CarlaUE4.sh
 (coiltraine) ruihan@depend-XPS-8930:~/scenario_runner$ python scenario_runner.py --scenario BackgroundActivity_1 --reloadWorld
 (coiltraine) ruihan@depend-XPS-8930:~/scenario_runner$ python manual_control_record.py 
 ```
-* train the NN_controller
+* To train the NN_controller
 `ruihan@depend-XPS-8930:~/scenario_runner$ python NN_controller.py` <br/>
 modify ~L58 `ds_file = 'localization_relative_coords_ds.csv'` (input dataset) and ~L158 `torch.save(model, 'models/NN_model_relative_epo50.pth')` (output model)
-* test the NN_controller, press `N` on keyboard to enable NN_controller
+* To test the NN_controller, press `N` on keyboard to enable NN_controller
+*Add `get_nn_controller` method to `manual_control_record.py`*
+
 ```
 ruihan@depend-XPS-8930:~/UnrealEngine_4.22/carla/Unreal/CarlaUE4/Saved/StagedBuilds/LinuxNoEditor$ ./CarlaUE4.sh
 (coiltraine) ruihan@depend-XPS-8930:~/scenario_runner$ python scenario_runner.py --scenario BackgroundActivity_1 --reloadWorld
 (coiltraine) ruihan@depend-XPS-8930:~/scenario_runner$ python manual_control_test_NN.py 
 ```
-modify ~L118 `   def __init__(self, carla_world, hud, nn_model_path='models/NN_model_epo50.pth'):` to change the path of the model to be tested.
+Modify ~L118 `   def __init__(self, carla_world, hud, nn_model_path='models/NN_model_epo50.pth'):` to change the path of the model to be tested.
 
 
 
