@@ -1,0 +1,13 @@
+NN
+1. use global coordinates
+	nn.Linear(nx, 100),nn.ReLU(),nn.Linear(100, ny)
+epoch : 30, train loss : 0.0893, valid loss : 0.0836, valid mean : [0.41581988 0.26743189], valid std : [0.5013167  0.44136035]
+	nn.Linear(nx, 100), nn.Linear(100, 500), nn.Linear(500, 100), nn.ReLU(), nn.Linear(100, ny)
+epoch : 30, train loss : 0.1238, valid loss : 0.1601, valid mean : [0.3794565  0.23107935], valid std : [0.36763999 0.2571277 ]
+	nn.Linear(nx, 100), nn.Linear(100, 1000), nn.Linear(1000,300), nn.Linear(300, 100), nn.ReLU(), nn.Linear(100, ny)
+epoch : 30, train loss : 0.0872, valid loss : 0.1231, valid mean : [0.33830772 0.17667223], valid std : [0.29709235 0.15245519]
+epoch : 50, train loss : 0.0796, valid loss : 0.0739, valid mean : [0.3493817  0.16869203], valid std : [0.30009101 0.17758632]
+
+2. use global vehicle coordinates and relative coords of map wrt vehicle
+	nn.Linear(nx, 100), nn.Linear(100, 1000), nn.Linear(1000,300), nn.Linear(300, 100), nn.ReLU(), nn.Linear(100, ny)
+epoch : 50, train loss : 0.0516, valid loss : 0.0506, valid mean : [0.29462675 0.10492651], valid std : [0.22238598 0.13284873]
