@@ -64,3 +64,70 @@ License
 -------
 
 ScenarioRunner specific code is distributed under MIT License.
+
+
+
+Customize ScenarioRunner for MPSC
+==================================
+
+Requirement (Installation)
+--------------------------
+1. Install UnrealEngine4.22 and Latest CARLA following [How to build CARLA on Linux]. <br/>
+Note: 
+  * clone `master` branch instead of `stable` branch to aviod "No rule to build target 'launch'" error. (Two branches have totally different Makefile)
+  * They just updated the Releases to 0.9.6, but I am using 0.9.5.
+2. Clone this repo and follow [Getting started](Docs/getting_started.md) documentation.
+3. Python3.5
+
+Run the code
+------------
+1. After [building] and [Getting started](Docs/getting_started.md) and some configurations, my `~/.bashrc` looks like the followings:
+```
+# >>> for CARLA >>>
+# start UE as CARLA's server
+export UE4_ROOT=~/UnrealEngine_4.22
+ 
+export CARLA_ROOT=/home/ruihan/UnrealEngine_4.22/carla/
+export PYTHONPATH=${CARLA_ROOT}/PythonAPI/carla:$PYTHONPATH
+
+export CARLA_SERVER_DIR=/home/ruihan/UnrealEngine_4.22/carla/Unreal/CarlaUE4/Saved/StagedBuilds/LinuxNoEditor
+# export CARLA_SERVER=/home/ruihan/UnrealEngine_4.22/carla/Unreal/CarlaUE4/Saved/StagedBuilds/LinuxNoEditor/CarlaUE4.sh
+
+# for conditional imitation learning
+export PYTHONPATH=/home/ruihan/coiltraine:$PYTHONPATH
+
+# for CARLA AD Challenge, scenario_runner
+export ROOT_SCENARIO_RUNNER=/home/ruihan/scenario_runner
+export PYTHONPATH=$PYTHONPATH:${CARLA_ROOT}/PythonAPI/carla/dist/carla-0.9.5-py3.5-linux-x86_64.egg:${CARLA_ROOT}/PythonAPI/carla/agents:${CARLA_ROOT}/PythonAPI/carla
+export PYTHONPATH=$PYTHONPATH:${CARLA_ROOT}/PythonAPI/carla/:${ROOT_SCENARIO_RUNNER}:${CARLA_ROOT}/PythonAPI/carla/dist/carla-0.9.5-py2.7-linux-x86_64.egg:${CARLA_ROOT}/PythonAPI/carla/agents
+```
+(`coiltraine` environment is not necessary if all other required packages are installed)
+
+2. Run the commands
+* collect data from `manual_control.py`, press `P` on keyboard to enable `autopilot` <br/>
+modify ~L265 (about line 265) `def write_in_csv(location, waypoint_tf, lane_width, control, ds='localization_relative_coords_ds.csv')` to change dataset filename.
+```
+ruihan@depend-XPS-8930:~/UnrealEngine_4.22/carla/Unreal/CarlaUE4/Saved/StagedBuilds/LinuxNoEditor$ ./CarlaUE4.sh
+(coiltraine) ruihan@depend-XPS-8930:~/scenario_runner$ python scenario_runner.py --scenario BackgroundActivity_1 --reloadWorld
+(coiltraine) ruihan@depend-XPS-8930:~/scenario_runner$ python manual_control_record.py 
+```
+* train the NN_controller
+`ruihan@depend-XPS-8930:~/scenario_runner$ python NN_controller.py` <br/>
+modify ~L58 `ds_file = 'localization_relative_coords_ds.csv'` (input dataset) and ~L158 `torch.save(model, 'models/NN_model_relative_epo50.pth')` (output model)
+* test the NN_controller, press `N` on keyboard to enable NN_controller
+```
+ruihan@depend-XPS-8930:~/UnrealEngine_4.22/carla/Unreal/CarlaUE4/Saved/StagedBuilds/LinuxNoEditor$ ./CarlaUE4.sh
+(coiltraine) ruihan@depend-XPS-8930:~/scenario_runner$ python scenario_runner.py --scenario BackgroundActivity_1 --reloadWorld
+(coiltraine) ruihan@depend-XPS-8930:~/scenario_runner$ python manual_control_test_NN.py 
+```
+modify ~L118 `   def __init__(self, carla_world, hud, nn_model_path='models/NN_model_epo50.pth'):` to change the path of the model to be tested.
+
+
+
+
+
+
+
+
+
+
