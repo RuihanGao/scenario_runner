@@ -79,7 +79,7 @@ Note:
 2. Clone this repo and follow [Getting started](Docs/getting_started.md) documentation.
 3. Python3.5
 
-Run the code
+Run the code in scenario_runner setting
 ------------
 1. After [building] and [Getting started](Docs/getting_started.md) and some configurations, my `~/.bashrc` looks like the followings:
 ```
@@ -126,7 +126,13 @@ ruihan@depend-XPS-8930:~/UnrealEngine_4.22/carla/Unreal/CarlaUE4/Saved/StagedBui
 ```
 Modify ~L118 `   def __init__(self, carla_world, hud, nn_model_path='models/NN_model_epo50.pth'):` to change the path of the model to be tested.
 
-
+Run the code in CARLA AD Challenge setting
+------------------------------
+1. 
+```
+ruihan@depend-XPS-8930:~/UnrealEngine_4.22/carla/Unreal/CarlaUE4/Saved/StagedBuilds/LinuxNoEditor$ ./CarlaUE4.sh -benchmark -fps=20 -quality-level=Epic
+(coiltraine) ruihan@depend-XPS-8930:~/scenario_runner$ bash srunner/challenge/run_evaluator_NN.sh
+```
 
 
 
