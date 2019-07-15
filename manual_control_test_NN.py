@@ -101,7 +101,7 @@ from NN_controller import *
 # ==============================================================================
 
 
-def find_weather_presets():
+def find_weather_presets(): # taken care of in challenge_evaluator_
     rgx = re.compile('.+?(?:(?<=[a-z])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])|$)')
     name = lambda x: ' '.join(m.group(0) for m in rgx.finditer(x))
     presets = [x for x in dir(carla.WeatherParameters) if re.match('[A-Z].+', x)]

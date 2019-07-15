@@ -58,6 +58,9 @@ from srunner.tools.config_parser import ActorConfiguration, ScenarioConfiguratio
 from srunner.scenariomanager.traffic_events import TrafficEventType
 from srunner.challenge.utils.route_manipulation import interpolate_trajectory, clean_route
 
+# for use nn_controller
+from NN_controller import *
+from NN_controller import MLP
 
 number_class_translation = {
 
@@ -145,7 +148,7 @@ def convert_transform_to_location(transform_vec):
     return location_vec
 
 
-Z_DISTANCE_AVOID_COLLISION = 0.5  # z vallue to add in oder to avoid spawning vehicles to close to the ground
+Z_DISTANCE_AVOID_COLLISION = 0.5  # z vallue to add in oder to avoid spawning vehicles too close to the ground
 
 
 def find_weather_presets():
@@ -303,7 +306,6 @@ class ChallengeEvaluator(object):
         Spawn or update all scenario actors according to
         a certain start position.
         """
-
         # If ego_vehicle already exists, just update location
         # Otherwise spawn ego vehicle
         if self.ego_vehicle is None:
@@ -612,6 +614,7 @@ class ChallengeEvaluator(object):
             return False
 
     def run_route(self, trajectory, no_master=False):
+        # one core funtion for running the scenario
         while no_master or self.route_is_running():
             # update all scenarios
             GameTime.on_carla_tick(self.timestamp)

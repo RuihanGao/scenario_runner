@@ -1,0 +1,25 @@
+{
+    "submission_status": "FINISHED",
+    "stderr": "\n==================================\n==[r0:CRASH] [Score = 0.00 : (route_score=0.0, infractions=-0.0)]\n==================================\nCrash message: Traceback (most recent call last):\n  File \"/home/ruihan/scenario_runner/srunner/challenge/challenge_evaluator_routes.py\", line 1256, in run\n    self.load_environment_and_run(args, world_annotations, route_description)\n  File \"/home/ruihan/scenario_runner/srunner/challenge/challenge_evaluator_routes.py\", line 1190, in load_environment_and_run\n    self.run_route(_route_description['trajectory'])\n  File \"/home/ruihan/scenario_runner/srunner/challenge/challenge_evaluator_routes.py\", line 621, in run_route\n    ego_action = self.agent_instance()\n  File \"/home/ruihan/scenario_runner/srunner/challenge/autoagents/autonomous_agent.py\", line 81, in __call__\n    control = self.run_step(input_data, timestamp)\n  File \"/home/ruihan/scenario_runner/srunner/challenge/autoagents/NNAgent.py\", line 57, in run_step\n    print(\"GPS\", input_data[GPS])\nNameError: name 'GPS' is not defined\n\n==================================\n\n\n==================================\n==[r1:CRASH] [Score = 0.00 : (route_score=0.0, infractions=-0.0)]\n==================================\nCrash message: Traceback (most recent call last):\n  File \"/home/ruihan/scenario_runner/srunner/challenge/challenge_evaluator_routes.py\", line 1256, in run\n    self.load_environment_and_run(args, world_annotations, route_description)\n  File \"/home/ruihan/scenario_runner/srunner/challenge/challenge_evaluator_routes.py\", line 1190, in load_environment_and_run\n    self.run_route(_route_description['trajectory'])\n  File \"/home/ruihan/scenario_runner/srunner/challenge/challenge_evaluator_routes.py\", line 621, in run_route\n    ego_action = self.agent_instance()\n  File \"/home/ruihan/scenario_runner/srunner/challenge/autoagents/autonomous_agent.py\", line 81, in __call__\n    control = self.run_step(input_data, timestamp)\n  File \"/home/ruihan/scenario_runner/srunner/challenge/autoagents/NNAgent.py\", line 57, in run_step\n    print(\"GPS\", input_data[GPS])\nNameError: name 'GPS' is not defined\n\n==================================\n\n",
+    "metadata": [
+        {
+            "accuracies": {
+                "avg. route points": 0.0,
+                "infraction points": 0.0,
+                "total avg.": 0.0
+            },
+            "stderr": "\n==================================\n==[r0:CRASH] [Score = 0.00 : (route_score=0.0, infractions=-0.0)]\n==================================\nCrash message: Traceback (most recent call last):\n  File \"/home/ruihan/scenario_runner/srunner/challenge/challenge_evaluator_routes.py\", line 1256, in run\n    self.load_environment_and_run(args, world_annotations, route_description)\n  File \"/home/ruihan/scenario_runner/srunner/challenge/challenge_evaluator_routes.py\", line 1190, in load_environment_and_run\n    self.run_route(_route_description['trajectory'])\n  File \"/home/ruihan/scenario_runner/srunner/challenge/challenge_evaluator_routes.py\", line 621, in run_route\n    ego_action = self.agent_instance()\n  File \"/home/ruihan/scenario_runner/srunner/challenge/autoagents/autonomous_agent.py\", line 81, in __call__\n    control = self.run_step(input_data, timestamp)\n  File \"/home/ruihan/scenario_runner/srunner/challenge/autoagents/NNAgent.py\", line 57, in run_step\n    print(\"GPS\", input_data[GPS])\nNameError: name 'GPS' is not defined\n\n==================================\n\n\n==================================\n==[r1:CRASH] [Score = 0.00 : (route_score=0.0, infractions=-0.0)]\n==================================\nCrash message: Traceback (most recent call last):\n  File \"/home/ruihan/scenario_runner/srunner/challenge/challenge_evaluator_routes.py\", line 1256, in run\n    self.load_environment_and_run(args, world_annotations, route_description)\n  File \"/home/ruihan/scenario_runner/srunner/challenge/challenge_evaluator_routes.py\", line 1190, in load_environment_and_run\n    self.run_route(_route_description['trajectory'])\n  File \"/home/ruihan/scenario_runner/srunner/challenge/challenge_evaluator_routes.py\", line 621, in run_route\n    ego_action = self.agent_instance()\n  File \"/home/ruihan/scenario_runner/srunner/challenge/autoagents/autonomous_agent.py\", line 81, in __call__\n    control = self.run_step(input_data, timestamp)\n  File \"/home/ruihan/scenario_runner/srunner/challenge/autoagents/NNAgent.py\", line 57, in run_step\n    print(\"GPS\", input_data[GPS])\nNameError: name 'GPS' is not defined\n\n==================================\n\n"
+        }
+    ],
+    "result": [
+        {
+            "accuracies": {
+                "avg. route points": 0.0,
+                "infraction points": 0.0,
+                "total avg.": 0.0
+            },
+            "split": "dev_split",
+            "show_to_participant": true
+        }
+    ]
+}
