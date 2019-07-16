@@ -7,35 +7,7 @@ import torch
 import torch.nn as nn
 from torch.autograd import Variable
 
-# previously import from e2c.py
-class NormalDistribution(object):
-    # RH: TODO: check the content
-    """
-    Wrapper class representing a multivariate normal distribution parameterized by
-    N(mu,Cov). If cov. matrix is diagonal, Cov=(sigma).^2. Otherwise,
-    Cov=A*(sigma).^2*A', where A = (I+v*r^T).
-    """
-
-    def __init__(self, mu, sigma, logsigma, *, v=None, r=None):
-        self.mu = mu
-        self.sigma = sigma
-        self.logsigma = logsigma
-        self.v = v
-        self.r = r
-
-    @property
-    def cov(self):
-        """This should only be called when NormalDistribution represents one sample"""
-        if self.v is not None and self.r is not None:
-            assert self.v.dim() == 1
-            dim = self.v.dim()
-            v = self.v.unsqueeze(1)  # D * 1 vector
-            rt = self.r.unsqueeze(0)  # 1 * D vector
-            A = torch.eye(dim) + v.mm(rt)
-            return A.mm(torch.diag(self.sigma.pow(2)).mm(A.t()))
-        else:
-            return torch.diag(self.sigma.pow(2))
-
+from e2c_controller import NormalDistribution
 
 class Encoder(nn.Module):
     def __init__(self, enc, dim_in, dim_out):
@@ -71,6 +43,7 @@ class Transition(nn.Module):
 
     def forward(self, h, Q, u):
         batch_size = h.size()[0]
+        # torch chunk method: split into 2 chunks
         v, r = self.trans(h).chunk(2, dim=1)
         v1 = v.unsqueeze(2)
         rT = r.unsqueeze(1)

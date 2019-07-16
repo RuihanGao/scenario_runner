@@ -66,6 +66,7 @@ class HumanInterface():
             pygame.event.pump()
 
             # process sensor data
+            # parent <=> agent
             input_data = self._parent.sensor_interface.get_data()
             image_center = input_data['Center'][1][:,:,-2::-1]
             image_left = input_data['Left'][1][:,:,-2::-1]

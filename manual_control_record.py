@@ -225,7 +225,7 @@ class KeyboardControl(object):
         if not self._autopilot_enabled:
             self._parse_keys(pygame.key.get_pressed(), clock.get_time())
             world.vehicle.apply_control(self._control)
-        record_dataset(world)
+        # record_dataset(world)
 
     def _parse_keys(self, keys, milliseconds):
         self._control.throttle = 1.0 if keys[K_UP] or keys[K_w] else 0.0
@@ -542,7 +542,7 @@ class CameraManager(object):
         self._surface = None
         self._parent = parent_actor
         self._hud = hud
-        self._recording = False
+        self._recording = True
         self._camera_transforms = [
             carla.Transform(carla.Location(x=1.6, z=1.7)),
             carla.Transform(carla.Location(x=-5.5, z=2.8), carla.Rotation(pitch=-15))]
