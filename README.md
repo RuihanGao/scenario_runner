@@ -127,6 +127,12 @@ ruihan@depend-XPS-8930:~/UnrealEngine_4.22/carla/Unreal/CarlaUE4/Saved/StagedBui
 ```
 Modify ~L118 `   def __init__(self, carla_world, hud, nn_model_path='models/NN_model_epo50.pth'):` to change the path of the model to be tested.
 
+* To see the performance of CoIL 
+```
+ruihan@depend-XPS-8930:~/UnrealEngine_4.22/carla/Unreal/CarlaUE4/Saved/StagedBuilds/LinuxNoEditor$ ./CarlaUE4.sh -benchmark -fps=20 -quality-level=Epic
+(coiltraine) ruihan@depend-XPS-8930:~/scenario_runner$ bash srunner/challenge/run_evaluator_co.sh
+```
+
 Run the code in CARLA AD Challenge setting
 ------------------------------
 1. 
