@@ -15,3 +15,7 @@ results*.txt
 *.log
 .project
 .pydevproject
+
+# Not adding collected data form manual_control.py
+_out/*.png
+
