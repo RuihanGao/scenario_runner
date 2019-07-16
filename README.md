@@ -109,6 +109,7 @@ modify ~L265 (about line 265) `def write_in_csv(location, waypoint_tf, lane_widt
 *Add `record_dataset` and `write_in_csv` methods to original `manual_control.py`*
 
 ```
+ruihan@depend-XPS-8930:cd $CARLA_SERVER_DIR
 ruihan@depend-XPS-8930:~/UnrealEngine_4.22/carla/Unreal/CarlaUE4/Saved/StagedBuilds/LinuxNoEditor$ ./CarlaUE4.sh
 (coiltraine) ruihan@depend-XPS-8930:~/scenario_runner$ python scenario_runner.py --scenario BackgroundActivity_1 --reloadWorld
 (coiltraine) ruihan@depend-XPS-8930:~/scenario_runner$ python manual_control_record.py 
@@ -125,6 +126,12 @@ ruihan@depend-XPS-8930:~/UnrealEngine_4.22/carla/Unreal/CarlaUE4/Saved/StagedBui
 (coiltraine) ruihan@depend-XPS-8930:~/scenario_runner$ python manual_control_test_NN.py 
 ```
 Modify ~L118 `   def __init__(self, carla_world, hud, nn_model_path='models/NN_model_epo50.pth'):` to change the path of the model to be tested.
+
+* To see the performance of CoIL 
+```
+ruihan@depend-XPS-8930:~/UnrealEngine_4.22/carla/Unreal/CarlaUE4/Saved/StagedBuilds/LinuxNoEditor$ ./CarlaUE4.sh -benchmark -fps=20 -quality-level=Epic
+(coiltraine) ruihan@depend-XPS-8930:~/scenario_runner$ bash srunner/challenge/run_evaluator_co.sh
+```
 
 Run the code in CARLA AD Challenge setting
 ------------------------------
