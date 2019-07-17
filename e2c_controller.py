@@ -22,7 +22,7 @@ from e2c_configs import *
 import numpy as np
 import cv2
 
-torch.set_default_dtype(torch.float64)
+torch.set_default_dtype(torch.float32)
 
 def binary_crossentropy(t, o, eps=1e-8):
     return t * torch.log(o + eps) + (1.0 - t) * torch.log(1.0 - o + eps)
@@ -188,13 +188,14 @@ class CarlaData(Dataset):
 
     @staticmethod
     def _process_img(img, img_width, img_height):
-        # TODO: check the meaning of 'L'
-        return ToTensor()((img.convert('L').
+        # PIL image convert: https://pillow.readthedocs.io/en/stable/reference/Image.html#PIL.Image.Image.convert
+        # ToTensor: https://pytorch.org/docs/stable/torchvision/transforms.html#torchvision.transforms.ToTensor
+        return ToTensor()((img.convert('L'). # grayscale
                             resize((img_width, img_height))))
     @staticmethod
     def _process_control(control):
         # convert a numpy array to tensor
-        return torch.from_numpy(control)
+        return torch.from_numpy(control).float()
     
     def _process(self):
         preprocessed_file = os.path.join(self.dir, 'processed.pkl')
@@ -231,10 +232,10 @@ class CarlaData(Dataset):
         # self.x_val = self._processed[:, 0]
         # self.u_val = self._processed[:, 1]
         # self.x_next = self._processed[:, 2]
-        print("self._processed", len(self._processed))
-        print(self._processed[0])
+        # print("self._processed", len(self._processed))
+        # print(self._processed[0])
 
-        return self._processed[:][0], self._processed[:][1], self._processed[:][2]
+        return list(zip(*self._processed))[0], list(zip(*self._processed))[1], list(zip(*self._processed))[2]
 
     def split_dataset(self, batch_size):
         """
@@ -286,19 +287,22 @@ class CarlaDataPro(Dataset):
         self.x_val = x_val # list of tensors
         self.u_val = u_val
         self.x_next = x_next
-
+        print("tensor type")
+        print(type(self.x_val[0]), type(self.u_val[0]), type(self.x_next[0]))
     def __len__(self):
         return len(self.x_val)
 
     def __getitem__(self, index):
         # return the item at certain index
-        # return self.x_val[index].data.cpu().numpy()[0]
-        return [self.x_val, self.u_val, self.x_next]
+        # print(type(self.x_val), len(self.x_val)) # <class 'tuple'> 314
+        # print(self.x_val[0].size()) #torch.Size([1, 88, 200]) 
+        return self.x_val[index], self.u_val[index], self.x_next[index]
 
 def train():
     ds_dir = '/home/ruihan/scenario_runner/data/'
     dataset = CarlaData(dir = ds_dir)
     x_val, u_val, x_next = dataset.query_data()
+
 
     # build network
     train_dataset = CarlaDataPro(x_val, u_val, x_next)

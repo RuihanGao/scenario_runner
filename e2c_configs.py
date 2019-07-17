@@ -9,6 +9,8 @@ from torch.autograd import Variable
 
 from e2c_controller import NormalDistribution
 
+torch.set_default_dtype(torch.float64)
+
 class Encoder(nn.Module):
     def __init__(self, enc, dim_in, dim_out):
         super(Encoder, self).__init__()
@@ -17,6 +19,9 @@ class Encoder(nn.Module):
         self.dim_out = dim_out
 
     def forward(self, x):
+        print("in Encoder forward")
+        print("x", x.size()) # torch.Size([128, 1, 88, 200])
+        print("m(x)", self.m(x).size())
         return self.m(x).chunk(2, dim=1)
 
 
