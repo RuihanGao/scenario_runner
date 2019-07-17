@@ -583,8 +583,7 @@ class CameraManager(object):
             weak_self = weakref.ref(self)
             # set the callback method and modify it to collect dataset
             # self.sensor.listen(lambda image: CameraManager._parse_image(weak_self, image))       
-            control = self._parent.get_control() # CameraManager._parent => world.vehicle
-            self.sensor.listen(lambda image: CameraManager._parse_image_and_save(weak_self, image, control))
+            self.sensor.listen(lambda image: CameraManager._parse_image_and_save(self, image))
         if notify:
             self._hud.notification(self._sensors[index][2])
         self._index = index
@@ -600,7 +599,7 @@ class CameraManager(object):
         if self._surface is not None:
             display.blit(self._surface, (0, 0))
 
-    # @staticmethod
+    @staticmethod
     def _parse_image(weak_self, image):
         self = weak_self()
         if not self:
@@ -628,19 +627,22 @@ class CameraManager(object):
         if self._recording:
             image.save_to_disk('_out/%08d' % image.frame_number)
 
-    def save_control_for_e2c(frame_number, control):
+    def save_control_for_e2c(self, frame_number, control):
         path = '_out/%8d' % frame_number # keep consistent with image.save_to_disk
         x = np.array([control.throttle, control.steer, control.brake])
+        print("control in array", x)
         np.save(path, x)
 
-    def _parse_image_and_save(weak_self, image, control):
+    def _parse_image_and_save(self, image):
         # parse the image as above
         # Note: convert, save_to_disk methods are from carla.Image class 
         # see https://carla.readthedocs.io/en/latest/python_api/#carlaimagecarlasensordata-class
-        CameraManager._parse_image(weak_self, image)
+        weak_self = weakref.ref(self)
+        self._parse_image(weak_self, image)
         # save control in another file with same frame number so that it's easier to read data
         frame_number = image.frame_number
-        CameraManager.save_control_for_e2c(frame_number, control)
+        control = self._parent.get_control() # CameraManager._parent => world.vehicle
+        self.save_control_for_e2c(frame_number, control)
         
 # ==============================================================================
 # -- game_loop() ---------------------------------------------------------------
