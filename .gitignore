@@ -18,4 +18,6 @@ results*.txt
 
 # Not adding collected data form manual_control.py
 _out/
-data/
+data/*
+!data/processed.pkl
+

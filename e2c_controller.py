@@ -3,6 +3,7 @@ from os import path
 from glob import glob
 from random import shuffle
 
+from sklearn.model_selection import train_test_split
 import torch
 from torch import nn
 from torch.autograd import Variable
@@ -168,13 +169,22 @@ class CarlaData(Dataset):
     the img size can be customized, check sensor/hud setting of collected data
     output: 3D control command: throttle, steer, brake
     '''
-    def __init__(self, dir, img_width = 200, img_height=88, action_dim=3):
+    def __init__(self, dir, img_width = 200, img_height=88, u_dim=3):
         # find all available data
         self.dir = dir
         self.img_width = img_width
-        self.img_height = img_height 
-        self.action_dim = action_dim
+        self.img_height = img_height
+        self.x_dim = self.img_width*self.img_height*3 # RGB channels 
+        self.u_dim = u_dim
+        self.z_dim = 100 # TODO: check how to set this dim
         self._process()
+        self.valid_size = 1/6
+
+    def __len__(self):
+        return len(self._processed)
+
+    def __getitem__(self, index):
+        return self._processed[index]
 
     @staticmethod
     def _process_img(img, img_width, img_height):
@@ -201,9 +211,9 @@ class CarlaData(Dataset):
                 u_val = np.load(os.path.join(self.dir, frame_number+'.npy'))
                 x_next = Image.open(os.path.join(self.dir, next_frame_number+'.png'))
 
-                processed.append((self._process_img(x_val, self.img_width, self.img_height), 
+                processed.append([self._process_img(x_val, self.img_width, self.img_height), 
                                   self._process_control(u_val), 
-                                  self._process_img(x_next, self.img_width, self.img_height)))
+                                  self._process_img(x_next, self.img_width, self.img_height)])
 
             with open(preprocessed_file, 'wb') as f:
                 pickle.dump(processed, f)
@@ -212,17 +222,30 @@ class CarlaData(Dataset):
             # directly load the data
             with open(preprocessed_file, 'rb') as f:
                 self._processed = pickle.load(f)
+        # TODO: check whether the pickle format it correct (should be tensors)
+        shuffle(self._processed)
 
-    def sample(self, batch_size):
-        samples = []
+    def query_data(self):
+        if self._processed is None:
+            raise ValueError("Dataset not loaded - call CarlaData._process() first.")
+        # self.x_val = self._processed[:, 0]
+        # self.u_val = self._processed[:, 1]
+        # self.x_next = self._processed[:, 2]
+        print("self._processed", len(self._processed))
+        print(self._processed[0])
 
+        return self._processed[:][0], self._processed[:][1], self._processed[:][2]
 
-    # def __len__(self):
-    #     return len(self._data['samples'])
-
-    # def __getitem__(self, index):
-    #     return self._processed(index)
-
+    def split_dataset(self, batch_size):
+        """
+        computes (x_t,u_t,x_{t+1}) pair
+        returns tuple of 3 ndarrays with shape
+        (batch,x_dim), (batch, u_dim), (batch, x_dim)
+        # refer to plane_data2.py
+        """
+        if self._processed is None:
+            raise ValueError("Dataset not loaded - call CarlaData._process() first.")
+        pass
 
     #         # copy from __getitem__ in coil_dataset
     #         img_path = os.path.join(self.root_dir,
@@ -257,15 +280,50 @@ class CarlaData(Dataset):
     #     # agent.run() while saving images and control output
 
 
+class CarlaDataPro(Dataset):
+    def __init__(self, x_val, u_val, x_next):
+        # x,val, u_val, x_next all should be in tensor form
+        self.x_val = x_val # list of tensors
+        self.u_val = u_val
+        self.x_next = x_next
 
+    def __len__(self):
+        return len(self.x_val)
+
+    def __getitem__(self, index):
+        # return the item at certain index
+        # return self.x_val[index].data.cpu().numpy()[0]
+        return [self.x_val, self.u_val, self.x_next]
 
 def train():
     ds_dir = '/home/ruihan/scenario_runner/data/'
     dataset = CarlaData(dir = ds_dir)
-    # (x_val, u_val, x_net_val) = dataset.sample(batch_size)
+    x_val, u_val, x_next = dataset.query_data()
 
+    # build network
+    train_dataset = CarlaDataPro(x_val, u_val, x_next)
+    train_loader = DataLoader(dataset=train_dataset, batch_size=128, shuffle=True)
 
+    model = E2C(dataset.x_dim, dataset.z_dim, dataset.u_dim)
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 
+    epochs = 50
+
+    for epoch in range(epochs):
+        model.train()
+        train_losses = []
+
+        for i, (x, action, x_next) in enumerate(train_loader):
+            
+            optimizer.zero_grad()
+            model(x, action, x_next)
+            loss = compute_loss(model.x_dec, model.x_next_pred_dec, x, x_next, model.Qz, model.Qz_next_pred, model.Qz_next)
+            loss.backward()
+            optimizer.step()
+            train_losses.append(loss.item())
+        model.eval()
+        print('epoch : {}, train loss : {:.4f}'\
+           .format(epoch+1, np.mean(train_losses)))
 
 if __name__ == '__main__':
     # make a funtion to partially test the program

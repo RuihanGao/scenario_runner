@@ -204,7 +204,7 @@ class CarlaDecoder(Decoder):
 
 class CarlaTransition(Transition):
     def __init__(self, dim_z, dim_u):
-        m = nn.Sequential(
+        trans = nn.Sequential(
             nn.Linear(dim_z, 100),
             nn.BatchNorm1d(100),
             nn.ReLU(),
