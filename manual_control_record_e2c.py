@@ -256,11 +256,6 @@ def record_dataset(world):
     transform = world.vehicle.get_transform()
     location = transform.location
     waypoint = map.get_waypoint(transform.location)
-    # print("location, waypoint")
-    # print(location, waypoint)
-    # print(location.x)
-    # print(waypoint.transform.location, waypoint.transform.rotation)
-    # print("lane_width", waypoint.lane_width) # lane_width = 3.5 constant
     control = world.vehicle.get_control()
     write_in_csv(location, waypoint.transform, waypoint.lane_width, control)
 
@@ -546,9 +541,9 @@ class CameraManager(object):
         self._hud = hud
         self._recording = True
         self._camera_transforms = [
-            carla.Transform(carla.Location(x=1.6, z=1.7)),
+            carla.Transform(carla.Location(x=2.0, y=0.0, z=1.4)),  # x=1.6, z=1.7
             carla.Transform(carla.Location(x=-5.5, z=2.8), carla.Rotation(pitch=-15))]
-        self._transform_index = 1
+        self._transform_index = 0 # originally is 1, change default camera to the front one
         self._sensors = [
             ['sensor.camera.rgb', cc.Raw, 'Camera RGB'],
             ['sensor.camera.depth', cc.Raw, 'Camera Depth (Raw)'],
@@ -586,7 +581,10 @@ class CameraManager(object):
             # We need to pass the lambda a weak reference to self to avoid
             # circular reference.
             weak_self = weakref.ref(self)
-            self.sensor.listen(lambda image: CameraManager._parse_image(weak_self, image))
+            # set the callback method and modify it to collect dataset
+            # self.sensor.listen(lambda image: CameraManager._parse_image(weak_self, image))       
+            control = self._parent.get_control() # CameraManager._parent => world.vehicle
+            self.sensor.listen(lambda image: CameraManager._parse_image_and_save(weak_self, image, control))
         if notify:
             self._hud.notification(self._sensors[index][2])
         self._index = index
@@ -630,7 +628,20 @@ class CameraManager(object):
         if self._recording:
             image.save_to_disk('_out/%08d' % image.frame_number)
 
+    def save_control_for_e2c(frame_number, control):
+        path = '_out/%8d' % frame_number # keep consistent with image.save_to_disk
+        x = np.array(control.throttle, control.steer, control.brake)
+        np.save(path, x)
 
+    def _parse_image_and_save(weak_self, image, control):
+        # parse the image as above
+        # Note: convert, save_to_disk methods are from carla.Image class 
+        # see https://carla.readthedocs.io/en/latest/python_api/#carlaimagecarlasensordata-class
+        _parse_image(weak_self, image)
+        # save control in another file with same frame number so that it's easier to read data
+        frame_number = image.frame_number
+        save_control_for_e2c(frame_number, control)
+        
 # ==============================================================================
 # -- game_loop() ---------------------------------------------------------------
 # ==============================================================================

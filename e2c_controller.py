@@ -208,6 +208,27 @@ class CarlaData(Dataset):
             # directly load the data
             with open(preprocessed_file, 'rb') as f:
                 self._processed = pickle.load(f)
+
+
+            # copy from __getitem__ in coil_dataset
+            img_path = os.path.join(self.root_dir,
+                                    self.sensor_data_names[index].split('/')[-2],
+                                    self.sensor_data_names[index].split('/')[-1])
+
+            img = cv2.imread(img_path, cv2.IMREAD_COLOR)
+            # Apply the image transformation
+            if self.transform is not None:
+                boost = 1
+                img = self.transform(self.batch_read_number * boost, img)
+            else:
+                img = img.transpose(2, 0, 1)
+
+            img = img.astype(np.float)
+            img = torch.from_numpy(img).type(torch.FloatTensor)
+            img = img / 255.
+
+
+
     @staticmethod
     def sample(cls, sample_size, output_dir, step_size = 1,
                 apply_control=True, num_shards=10):
@@ -220,11 +241,6 @@ class CarlaData(Dataset):
         # see wether can use manual_control or NPCAgent for collecting data
 
         # agent.run() while saving images and control output
-
-
-
-
-
 
 
 

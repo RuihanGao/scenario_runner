@@ -35,7 +35,7 @@ class E2CAgent(AutonomousAgent):
 		self._model = E2C(dim_in, dim_z, dim_u, config)
 		self._model.load_state_dict(checkpoint['state_dict'])
 		self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-		self.nn_model.eval()
+		self._model.eval()
 
 
 	def sensor(self):
@@ -46,51 +46,44 @@ class E2CAgent(AutonomousAgent):
 				   {'type': 'sensor.other.gnss', 'x': 0.7, 'y': -0.4, 'z': 1.60, 'id': 'GPS'},
 				   {'type': 'sensor.hd_map', 'reading_frequency': 1, 'id': 'hdmap'}
 				   ]
-		# 	 TODO	For three cameras
-		# {'type': 'sensor.camera.rgb', 
-		# 'x': 0.7, 'y': 0.0, 'z': 1.60, 'roll':0.0, 'pitch':0.0, 'yaw': 0.0,
-		# 'width': 800, 'height': 600, 'fov':100, 'id': 'Center'},
-		# 		 {'type': 'sensor.camera.rgb', 'x': 0.7, 'y': -0.4, 'z': 1.60, 'roll': 0.0, 'pitch': 0.0,
-		# 			'yaw': -45.0, 'width': 800, 'height': 600, 'fov': 100, 'id': 'Left'},
-		# 		 {'type': 'sensor.camera.rgb', 'x': 0.7, 'y': 0.4, 'z': 1.60, 'roll': 0.0, 'pitch': 0.0, 'yaw': 45.0,
-		# 			'width': 800, 'height': 600, 'fov': 100, 'id': 'Right'},
 
 	def run_step(self, input_data, timestamp):
-		# see  CoILBaseline for parsing camera data
-		# obtain speed from can_bus sensor (may not need speed info for e2c)
-		# # obtain location from GPS sensor		
-		# location = carla.Location(x=input_data['GPS'][1][0], y=input_data['GPS'][1][1], z=input_data['GPS'][1][2])
-		# # for e2c, wp is not needed
-		# # get waypoint data from hdmap sensor
-		# map = CarlaDataProvider.get_map()
-		# wp = map.get_waypoint(location) # seem to provide only one wp ahead 
-		# if wp is None:
-		# 		raise ValueError("No waypoint can be obtained from the current location")
-		# 		# set/global planner
-
-		# obtain images from camera sensor
-
-		# process image from real-time sensor, with id of 'rgb'
+		# process image from real-time camera sensor, with id of 'rgb'
 		img = _process_img(input_data['rgb'][1])
 		latent_z, control = self.get_e2c_control(img)
 		print("control in run_step", control)
 		return control
 
 	def _process_img(self, sensor):
+		# copy from CoILBaseline
+		# TODO: check with _process_img in e2c_controller
 		sensor = sensor[:, :, 0:3]  # BGRA->BRG drop alpha channel
 		sensor = sensor[:, :, ::-1]  # BGR->RGB
 		# sensor = sensor[g_conf.IMAGE_CUT[0]:g_conf.IMAGE_CUT[1], :, :]  # crop
 		sensor = scipy.misc.imresize(sensor, (self.img_height, self.img_width))
 		self.latest_image = sensor
+		print("latest_image", self.latest_image.shape)
 
 		sensor = np.swapaxes(sensor, 0, 1)
 		sensor = np.transpose(sensor, (2, 1, 0))
 		sensor = torch.from_numpy(sensor / 255.0).type(torch.FloatTensor).cuda()
-		image_input = sensor.unsqueeze(0)
-		self.latest_image_tensor = image_input
+		img = sensor.unsqueeze(0)
+		self.latest_image_tensor = img
+		print("img", img.size())
+		return img
 
-		return image_input
 
-
-	def get_e2c_control(self, img)
+	def get_e2c_control(self, img):
+		# TODO check how to extract latent z
+		e2c_control = self._model(img)
+		e2c_control = e2c_control.data.cpu().numpy()[0]
+		print("control from e2c controller", e2c_control)
+		# make a whole set of control
+		control = carla.VehicleControl()
+		control.steer = e2c_control[1]
+		control.throttle = e2c_control[0]
+		# control.brake = 0.0
+		control.brake = e2c_control[2]
+		control.hand_brake = False
+		return control
 

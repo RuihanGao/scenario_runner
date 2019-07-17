@@ -42,6 +42,15 @@ class DummyAgent(AutonomousAgent):
         return sensors
 
     def run_step(self, input_data, timestamp):
+        # save ways of parsing input_data
+        # # obtain speed from can_bus sensor (may not need speed info for e2c)
+        # speed = input_data['can_bus'][1]['speed']
+        # # obtain location from GPS sensor   
+        # location = carla.Location(x=input_data['GPS'][1][0], y=input_data['GPS'][1][1], z=input_data['GPS'][1][2])
+        # # get waypoint data from hdmap sensor
+        # map = CarlaDataProvider.get_map()
+        # wp = map.get_waypoint(location) # seem to provide only one wp ahead 
+
         print("=====================>")
         for key, val in input_data.items():
             if hasattr(val[1], 'shape'):
