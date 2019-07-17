@@ -79,6 +79,8 @@ Note:
 2. Clone this repo and follow [Getting started](Docs/getting_started.md) documentation.
 3. Python3.5
 
+## NN_controller
+
 Run the code in scenario_runner setting
 ------------
 1. After [building] and [Getting started](Docs/getting_started.md) and some configurations, my `~/.bashrc` looks like the followings:
@@ -141,8 +143,64 @@ ruihan@depend-XPS-8930:~/UnrealEngine_4.22/carla/Unreal/CarlaUE4/Saved/StagedBui
 (coiltraine) ruihan@depend-XPS-8930:~/scenario_runner$ bash srunner/challenge/run_evaluator_NN.sh
 ```
 
+## e2c_controller
 
-
+Run the code in senario_runner setting
+------------------------------
+1. Collect data
+```
+ruihan@depend-XPS-8930:~/UnrealEngine_4.22/carla/Unreal/CarlaUE4/Saved/StagedBuilds/LinuxNoEditor$ ./CarlaUE4.sh
+(coiltraine) ruihan@depend-XPS-8930:~/scenario_runner$ python scenario_runner.py --scenario BackgroundActivity_1 --reloadWorld
+(coiltraine) ruihan@depend-XPS-8930:~/scenario_runner$ python manual_control_record_e2c.py 
+```
+collected data (image .png and control .npy) are saved in `/data` folder but are not uploaded to remote repo
+2. Parse data and train the model `(coiltraine) ruihan@depend-XPS-8930:~/scenario_runner$ python e2c_controller.py`, which load the `/data/processed.pkl` file as data source. <br/>
+*ToDo*
+encounter error `AttributeError: 'list' object has no attribute 'dim'`. Full stack:
+```
+(coiltraine) ruihan@depend-XPS-8930:~/scenario_runner$ python e2c_controller.py self._processed 314
+[tensor([[[0.9451, 0.9490, 0.9451,  ..., 0.9412, 0.9412, 0.9333],
+         [0.9451, 0.9451, 0.9490,  ..., 0.9451, 0.9412, 0.9255],
+         [0.9451, 0.9451, 0.9490,  ..., 0.9412, 0.9412, 0.9216],
+         ...,
+         [0.1725, 0.1804, 0.1765,  ..., 0.1765, 0.1725, 0.1686],
+         [0.1804, 0.1765, 0.1843,  ..., 0.1882, 0.1804, 0.1765],
+         [0.1843, 0.1882, 0.1922,  ..., 0.1843, 0.1804, 0.1843]]],
+       dtype=torch.float32), tensor([1.0000e+00, 2.3869e-05, 0.0000e+00]), tensor([[[0.9451, 0.9451, 0.9451,  ..., 0.9412, 0.9412, 0.9333],
+         [0.9451, 0.9451, 0.9490,  ..., 0.9451, 0.9412, 0.9255],
+         [0.9451, 0.9451, 0.9451,  ..., 0.9412, 0.9412, 0.9255],
+         ...,
+         [0.1608, 0.1765, 0.1686,  ..., 0.1647, 0.1569, 0.1451],
+         [0.1725, 0.1725, 0.1725,  ..., 0.1451, 0.1451, 0.1490],
+         [0.1804, 0.1765, 0.1882,  ..., 0.1490, 0.1451, 0.1569]]],
+       dtype=torch.float32)]
+Traceback (most recent call last):
+  File "e2c_controller.py", line 330, in <module>
+    train()
+  File "e2c_controller.py", line 319, in train
+    model(x, action, x_next)
+  File "/home/ruihan/.local/lib/python3.5/site-packages/torch/nn/modules/module.py", line 493, in __call__
+    result = self.forward(*input, **kwargs)
+  File "e2c_controller.py", line 98, in forward
+    mean, logvar = self.encode(x)
+  File "e2c_controller.py", line 78, in encode
+    return self.encoder(x)
+  File "/home/ruihan/.local/lib/python3.5/site-packages/torch/nn/modules/module.py", line 493, in __call__
+    result = self.forward(*input, **kwargs)
+  File "/home/ruihan/scenario_runner/e2c_configs.py", line 20, in forward
+    return self.m(x).chunk(2, dim=1)
+  File "/home/ruihan/.local/lib/python3.5/site-packages/torch/nn/modules/module.py", line 493, in __call__
+    result = self.forward(*input, **kwargs)
+  File "/home/ruihan/.local/lib/python3.5/site-packages/torch/nn/modules/container.py", line 92, in forward
+    input = module(input)
+  File "/home/ruihan/.local/lib/python3.5/site-packages/torch/nn/modules/module.py", line 493, in __call__
+    result = self.forward(*input, **kwargs)
+  File "/home/ruihan/.local/lib/python3.5/site-packages/torch/nn/modules/linear.py", line 92, in forward
+    return F.linear(input, self.weight, self.bias)
+  File "/home/ruihan/.local/lib/python3.5/site-packages/torch/nn/functional.py", line 1404, in linear
+    if input.dim() == 2 and bias is not None:
+AttributeError: 'list' object has no attribute 'dim'
+```
 
 
 
