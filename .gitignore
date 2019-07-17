@@ -17,5 +17,5 @@ results*.txt
 .pydevproject
 
 # Not adding collected data form manual_control.py
-_out/*.png
+_out/
 

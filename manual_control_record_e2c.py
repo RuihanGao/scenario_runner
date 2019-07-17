@@ -600,7 +600,7 @@ class CameraManager(object):
         if self._surface is not None:
             display.blit(self._surface, (0, 0))
 
-    @staticmethod
+    # @staticmethod
     def _parse_image(weak_self, image):
         self = weak_self()
         if not self:
@@ -630,17 +630,17 @@ class CameraManager(object):
 
     def save_control_for_e2c(frame_number, control):
         path = '_out/%8d' % frame_number # keep consistent with image.save_to_disk
-        x = np.array(control.throttle, control.steer, control.brake)
+        x = np.array([control.throttle, control.steer, control.brake])
         np.save(path, x)
 
     def _parse_image_and_save(weak_self, image, control):
         # parse the image as above
         # Note: convert, save_to_disk methods are from carla.Image class 
         # see https://carla.readthedocs.io/en/latest/python_api/#carlaimagecarlasensordata-class
-        _parse_image(weak_self, image)
+        CameraManager._parse_image(weak_self, image)
         # save control in another file with same frame number so that it's easier to read data
         frame_number = image.frame_number
-        save_control_for_e2c(frame_number, control)
+        CameraManager.save_control_for_e2c(frame_number, control)
         
 # ==============================================================================
 # -- game_loop() ---------------------------------------------------------------
