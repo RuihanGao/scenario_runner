@@ -79,6 +79,8 @@ Note:
 2. Clone this repo and follow [Getting started](Docs/getting_started.md) documentation.
 3. Python3.5
 
+## NN_controller
+
 Run the code in scenario_runner setting
 ------------
 1. After [building] and [Getting started](Docs/getting_started.md) and some configurations, my `~/.bashrc` looks like the followings:
@@ -141,8 +143,18 @@ ruihan@depend-XPS-8930:~/UnrealEngine_4.22/carla/Unreal/CarlaUE4/Saved/StagedBui
 (coiltraine) ruihan@depend-XPS-8930:~/scenario_runner$ bash srunner/challenge/run_evaluator_NN.sh
 ```
 
+## e2c_controller
 
-
+Run the code in senario_runner setting
+------------------------------
+1. Collect data
+```
+ruihan@depend-XPS-8930:~/UnrealEngine_4.22/carla/Unreal/CarlaUE4/Saved/StagedBuilds/LinuxNoEditor$ ./CarlaUE4.sh
+(coiltraine) ruihan@depend-XPS-8930:~/scenario_runner$ python scenario_runner.py --scenario BackgroundActivity_1 --reloadWorld
+(coiltraine) ruihan@depend-XPS-8930:~/scenario_runner$ python manual_control_record_e2c.py 
+```
+collected data (image .png and control .npy) are saved in `/data` folder but are not uploaded to remote repo
+2. Parse data and train the model `(coiltraine) ruihan@depend-XPS-8930:~/scenario_runner$ python e2c_controller.py`, which load the `/data/processed.pkl` file as data source
 
 
 
