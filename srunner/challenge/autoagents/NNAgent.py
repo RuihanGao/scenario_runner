@@ -18,6 +18,7 @@ from NN_controller import *
 from NN_controller import MLP
 
 class NNAgent(AutonomousAgent):
+	
 		def setup(self, path_to_conf_file, nn_model_path='models/NN_model_epo50.pth'):
 				# similar to __init__
 				self.track = Track.ALL_SENSORS_HDMAP_WAYPOINTS

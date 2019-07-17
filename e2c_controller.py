@@ -186,17 +186,18 @@ class CarlaData(Dataset):
                             resize((self.width, self.height))))
 
     def _process(self):
+        # load image data from dataset
         preprocessed_file = os.path.join(self.dir, 'processed.pkl')
         if not os.path.exists(preprocessed_file):
             # create data and dump
             processed = []
             for sample in tqdm(self._data['samples'], desc='processing_data'):
                 # parse the image data from three rgb camreas, C, L, R
-                central = Image.open(os.path.join(self.dir, sample['central']))
+                center = Image.open(os.path.join(self.dir, sample['center']))
                 left = Image.open(os.path.join(self.dir, sample['left']))
                 right = Image.open(os.path.join(self.dir, sample['right']))
                 # covert to tensors and add to array
-                processed.append((self._process_img(central),
+                processed.append((self._process_img(center),
                                   self._process_img(left),
                                   self._process_img(right),
                                   np.array(sample['control'])))
@@ -211,40 +212,14 @@ class CarlaData(Dataset):
     def sample(cls, sample_size, output_dir, step_size = 1,
                 apply_control=True, num_shards=10):
         # interface with Carla to collect data
+        # see HumanAgent instead of manual_control for reference of parsing sensor data. 
+        # sample images from manual_control are stored in /out folder, which are kind of spectator view
+        # TODO
 
+        # initialize the environment
+        # see wether can use manual_control or NPCAgent for collecting data
 
-
-
-
-
-
-
-
-
-    def __init__(self,dir):
-        # fname is the .npz data file name
-        # TODO: to be obtained from data collection
-        super(CarlaData, self).__init__()
-        self.cache = fname
-        self.initialized = False
-        self.params = (x_dim, u_dim, T)
-
-
-    def initialize(self):
-        if os.path.exists(self.cache):
-            self.load()
-        else:
-            self.precompute()
-        self.initialized = True
-    def load(self):
-        print("Loading data from %s ..." % (self.cache))
-        D = np.load(self.cache) # TODO: check loading format, e.g. imread
-        self.
-
-
-
-
-
+        # agent.run() while saving images and control output
 
 
 
