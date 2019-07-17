@@ -625,10 +625,13 @@ class CameraManager(object):
             array = array[:, :, ::-1]
             self._surface = pygame.surfarray.make_surface(array.swapaxes(0, 1))
         if self._recording:
-            image.save_to_disk('_out/%08d' % image.frame_number)
+            # RH: change the path from '_out/%08d' to 'data/%08d', 
+            #   seems to restore all prev files even after "moving the folder to Trash"
+            image.save_to_disk('data/%08d' % image.frame_number)
 
     def save_control_for_e2c(self, frame_number, control):
-        path = '_out/%8d' % frame_number # keep consistent with image.save_to_disk
+        path = 'data/{:08d}'.format(frame_number) # keep consistent with image.save_to_disk
+        print("path for npy", path)
         x = np.array([control.throttle, control.steer, control.brake])
         print("control in array", x)
         np.save(path, x)
@@ -715,10 +718,11 @@ def main():
     argparser.add_argument(
         '--res',
         metavar='WIDTHxHEIGHT',
-        default='1280x720',
-        help='window resolution (default: 1280x720)')
+        default='200x88',
+        help='window resolution (default: 200x88, originally default: 1280x720)')
     args = argparser.parse_args()
 
+    # RH: mmodify the windows_size to collect smaller images
     args.width, args.height = [int(x) for x in args.res.split('x')]
 
     log_level = logging.DEBUG if args.debug else logging.INFO

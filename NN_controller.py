@@ -83,12 +83,8 @@ if __name__ == '__main__':
 	locations, controls = dataiter.next()
 	# dataiter.next(): torch.Size([128, 10])
 
-
-
 	print('location info shape on PyTroch : ', locations.size())
 	print('control commands shape on PyTroch : ', controls.size())
-
-
 
 	# build the model
 	model = MLP()

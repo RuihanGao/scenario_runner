@@ -1,5 +1,7 @@
 import os, sys
 from os import path 
+from glob import glob
+from random import shuffle
 
 import torch
 from torch import nn
@@ -7,13 +9,17 @@ from torch.autograd import Variable
 from torch.utils.data import Dataset, DataLoader
 from torchvision.transforms import ToTensor
 
+from PIL import Image
 from skimage.transform import resize
 from skimage.color import rgb2gray
 
 from tqdm import trange, tqdm
 import pickle
 
-from configs import load_config
+from e2c_configs import *
+
+import numpy as np
+import cv2
 
 torch.set_default_dtype(torch.float64)
 
@@ -155,52 +161,50 @@ def compute_loss(x_dec, x_next_pred_dec, x, x_next,
     kl = KLDGaussian(Qz_next_pred, Qz_next)
     return bound_loss.mean(), kl.mean()
 
-from .configs import load_config
-
 # create a class for the dataset
 class CarlaData(Dataset):
     '''
-    input: camera images (single central / concatenated cent&L&L&R)
-    output: control command
+    input: camera images (single central.png) & control command in array.npy
+    the img size can be customized, check sensor/hud setting of collected data
+    output: 3D control command: throttle, steer, brake
     '''
-    def __init__(self, dir):
+    def __init__(self, dir, img_width = 200, img_height=88, action_dim=3):
+        # find all available data
         self.dir = dir
-        self.width = 256*4
-        self.height = 256 # TODO: check the img size returned from rgb camera sensor
-        action_dim = 2
-        with open(path.join(dir, 'data.json')) as f:
-            # TODO: check how to load/dump img with json
-            self._data = json.load(f)
+        self.img_width = img_width
+        self.img_height = img_height 
+        self.action_dim = action_dim
         self._process()
 
-    def __len__(self):
-        return len(self._data['samples'])
-
-    def __getitem__(self, index):
-        return self._processed(index)
-
     @staticmethod
-    def _process_img(img):
-        # TODO: check skimage package
+    def _process_img(img, img_width, img_height):
+        # TODO: check the meaning of 'L'
         return ToTensor()((img.convert('L').
-                            resize((self.width, self.height))))
-
+                            resize((img_width, img_height))))
+    @staticmethod
+    def _process_control(control):
+        # convert a numpy array to tensor
+        return torch.from_numpy(control)
+    
     def _process(self):
-        # load image data from dataset
         preprocessed_file = os.path.join(self.dir, 'processed.pkl')
         if not os.path.exists(preprocessed_file):
             # create data and dump
+            imgs = sorted(glob(os.path.join(self.dir,"*.png"))) # sorted by frame numbers
+            # shuffle(imgs) # if need randomness
+            frame_numbers = [img.split('/')[-1].split('.')[0] for img in imgs]
+            
             processed = []
-            for sample in tqdm(self._data['samples'], desc='processing_data'):
-                # parse the image data from three rgb camreas, C, L, R
-                center = Image.open(os.path.join(self.dir, sample['center']))
-                left = Image.open(os.path.join(self.dir, sample['left']))
-                right = Image.open(os.path.join(self.dir, sample['right']))
-                # covert to tensors and add to array
-                processed.append((self._process_img(center),
-                                  self._process_img(left),
-                                  self._process_img(right),
-                                  np.array(sample['control'])))
+            for frame_number in frame_numbers[:-1]: # ignore the last frame which does not have next frame
+                next_frame_number = "{:08d}".format(int(frame_number)+1)
+                x_val = Image.open(os.path.join(self.dir, frame_number+'.png'))
+                u_val = np.load(os.path.join(self.dir, frame_number+'.npy'))
+                x_next = Image.open(os.path.join(self.dir, next_frame_number+'.png'))
+
+                processed.append((self._process_img(x_val, self.img_width, self.img_height), 
+                                  self._process_control(u_val), 
+                                  self._process_img(x_next, self.img_width, self.img_height)))
+
             with open(preprocessed_file, 'wb') as f:
                 pickle.dump(processed, f)
             self._processed = processed
@@ -209,54 +213,60 @@ class CarlaData(Dataset):
             with open(preprocessed_file, 'rb') as f:
                 self._processed = pickle.load(f)
 
-
-            # copy from __getitem__ in coil_dataset
-            img_path = os.path.join(self.root_dir,
-                                    self.sensor_data_names[index].split('/')[-2],
-                                    self.sensor_data_names[index].split('/')[-1])
-
-            img = cv2.imread(img_path, cv2.IMREAD_COLOR)
-            # Apply the image transformation
-            if self.transform is not None:
-                boost = 1
-                img = self.transform(self.batch_read_number * boost, img)
-            else:
-                img = img.transpose(2, 0, 1)
-
-            img = img.astype(np.float)
-            img = torch.from_numpy(img).type(torch.FloatTensor)
-            img = img / 255.
+    def sample(self, batch_size):
+        samples = []
 
 
+    # def __len__(self):
+    #     return len(self._data['samples'])
 
-    @staticmethod
-    def sample(cls, sample_size, output_dir, step_size = 1,
-                apply_control=True, num_shards=10):
-        # interface with Carla to collect data
-        # see HumanAgent instead of manual_control for reference of parsing sensor data. 
-        # sample images from manual_control are stored in /out folder, which are kind of spectator view
-        # TODO
+    # def __getitem__(self, index):
+    #     return self._processed(index)
 
-        # initialize the environment
-        # see wether can use manual_control or NPCAgent for collecting data
 
-        # agent.run() while saving images and control output
+    #         # copy from __getitem__ in coil_dataset
+    #         img_path = os.path.join(self.root_dir,
+    #                                 self.sensor_data_names[index].split('/')[-2],
+    #                                 self.sensor_data_names[index].split('/')[-1])
+
+    #         img = cv2.imread(img_path, cv2.IMREAD_COLOR)
+    #         # Apply the image transformation
+    #         if self.transform is not None:
+    #             boost = 1
+    #             img = self.transform(self.batch_read_number * boost, img)
+    #         else:
+    #             img = img.transpose(2, 0, 1)
+
+    #         img = img.astype(np.float)
+    #         img = torch.from_numpy(img).type(torch.FloatTensor)
+    #         img = img / 255.
 
 
 
-class ControlDS(Dataset):
-    def __init__(self, X, y=None):
-        self.X = X
-        self.y = y
+    # @staticmethod
+    # def sample(cls, sample_size, output_dir, step_size = 1,
+    #             apply_control=True, num_shards=10):
+    #     # interface with Carla to collect data
+    #     # see HumanAgent instead of manual_control for reference of parsing sensor data. 
+    #     # sample images from manual_control are stored in /out folder, which are kind of spectator view
+    #     # TODO
 
-    def __len__(self):
-        return len(self.X.index)
+    #     # initialize the environment
+    #     # see wether can use manual_control or NPCAgent for collecting data
 
-    def __getitem__(self, index):
-        # return the item at certain index
-        location_info = self.X.iloc[index, ].values #.astype(np.float64) #.astype().reshape()
-        # do any processing here
+    #     # agent.run() while saving images and control output
 
-        if self.y is not None:
-            return location_info, self.y.iloc[index, ].values #.astype(np.float64)
-        return location_info
+
+
+
+def train():
+    ds_dir = '/home/ruihan/scenario_runner/data/'
+    dataset = CarlaData(dir = ds_dir)
+    # (x_val, u_val, x_net_val) = dataset.sample(batch_size)
+
+
+
+
+if __name__ == '__main__':
+    # make a funtion to partially test the program
+    train()
