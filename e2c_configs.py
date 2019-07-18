@@ -175,6 +175,7 @@ class CarlaEncoder(Encoder):
         # build the nn architecture
         # TODO: how to choose the number of neurons?
         print("in CarlaEncoder dim_in {} dim_out {}".format(dim_in, dim_out))
+
         m = nn.Sequential(
             nn.Linear(dim_in, 150),
             nn.BatchNorm1d(150),

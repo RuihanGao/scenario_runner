@@ -11,6 +11,7 @@ from torch.autograd import Variable
 from torch.utils.data import Dataset, DataLoader
 from torchvision.transforms import ToTensor, ToPILImage
 import torchvision.transforms.functional as F
+from torchvision.transforms import ToTensor
 
 from PIL import Image
 from skimage.transform import resize
@@ -23,7 +24,6 @@ from e2c_configs import *
 
 import numpy as np
 import cv2
-# from torchsummary import summary
 
 torch.set_default_dtype(torch.float32)
 
@@ -217,7 +217,6 @@ class CarlaData(Dataset):
                 x_val = cv2.imread(os.path.join(self.dir, frame_number+'.png'))
                 x_gray = cv2.cvtColor(x_val, cv2.COLOR_BGR2GRAY) # img.shape (88,200)
 
-
                 processed.append([self._process_img(x_val, self.img_width, self.img_height), 
                                   self._process_control(u_val), 
                                   self._process_img(x_next, self.img_width, self.img_height)])
@@ -304,6 +303,7 @@ class CarlaDataPro(Dataset):
         # print(self.x_val[0].size()) #torch.Size([1, 88, 200]) 
         return self.x_val[index], self.u_val[index], self.x_next[index]
 
+
 def train(model_path):
     ds_dir = '/home/ruihan/scenario_runner/data/'
     dataset = CarlaData(dir = ds_dir)
@@ -322,6 +322,7 @@ def train(model_path):
     for epoch in range(epochs):
         model.train()
         train_losses = []
+
 
         for i, (x, u, x_next) in enumerate(train_loader):
             # flatten the input images into a single 784 long vector
@@ -389,3 +390,4 @@ if __name__ == '__main__':
     model_path = 'models/E2C/E2C_model_basic.pth'
     train(model_path)
     test(model_path)
+
