@@ -190,7 +190,7 @@ class CarlaData(Dataset):
     def _process_img(img, img_width, img_height):
         # PIL image convert: https://pillow.readthedocs.io/en/stable/reference/Image.html#PIL.Image.Image.convert
         # ToTensor: https://pytorch.org/docs/stable/torchvision/transforms.html#torchvision.transforms.ToTensor
-        return ToTensor()((img.convert('L'). # grayscale
+        return ToTensor()((img.convert('RGB').
                             resize((img_width, img_height))))
     @staticmethod
     def _process_control(control):
@@ -318,10 +318,14 @@ def train():
         train_losses = []
 
         for i, (x, action, x_next) in enumerate(train_loader):
+            # flatten the input images into a single 784 long vector
+            x = x.view(x.shape[0], -1)
+            action = action.view(action.shape[0], -1)
+            x_next = x_next.view(x_next.shape[0], -1)
             
             optimizer.zero_grad()
             model(x, action, x_next)
-            loss = compute_loss(model.x_dec, model.x_next_pred_dec, x, x_next, model.Qz, model.Qz_next_pred, model.Qz_next)
+            loss, _ = compute_loss(model.x_dec, model.x_next_pred_dec, x, x_next, model.Qz, model.Qz_next_pred, model.Qz_next)
             loss.backward()
             optimizer.step()
             train_losses.append(loss.item())

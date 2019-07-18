@@ -19,9 +19,7 @@ class Encoder(nn.Module):
         self.dim_out = dim_out
 
     def forward(self, x):
-        print("in Encoder forward")
-        print("x", x.size()) # torch.Size([128, 1, 88, 200])
-        print("m(x)", self.m(x).size())
+        #x torch.Size([128, 52800]) m(x) torch.Size([128, 200])
         return self.m(x).chunk(2, dim=1)
 
 
@@ -56,16 +54,16 @@ class Transition(nn.Module):
         if rT.data.is_cuda:
             I.dada.cuda()
         A = I.add(v1.bmm(rT))
-
         B = self.fc_B(h).view(-1, self.dim_z, self.dim_u)
         o = self.fc_o(h)
 
         # need to compute the parameters for distributions
         # as well as for the samples
         u = u.unsqueeze(2)
-
-        d = A.bmm(Q.mu.unsqueeze(2)).add(B.bmm(u)).add(o).squeeze(2)
-        sample = A.bmm(h.unsqueeze(2)).add(B.bmm(u)).add(o).squeeze(2)
+        # Q.mu.unsqueeze(2) (z^bar): torch.Size([128, 100, 1])
+        d = A.bmm(Q.mu.unsqueeze(2)).add(B.bmm(u)).add(o.unsqueeze(2)).squeeze(2)
+        # print("d", d.size()) # ([128, 100])
+        sample = A.bmm(h.unsqueeze(2)).add(B.bmm(u)).add(o.unsqueeze(2)).squeeze(2)
 
         return sample, NormalDistribution(d, Q.sigma, Q.logsigma, v=v, r=r)
 
@@ -176,6 +174,7 @@ class CarlaEncoder(Encoder):
     def __init__(self, dim_in, dim_out):
         # build the nn architecture
         # TODO: how to choose the number of neurons?
+        print("in CarlaEncoder dim_in {} dim_out {}".format(dim_in, dim_out))
         m = nn.Sequential(
             nn.Linear(dim_in, 150),
             nn.BatchNorm1d(150),
