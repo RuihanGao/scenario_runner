@@ -1,6 +1,7 @@
 import os, sys
 from os import path 
 from glob import glob
+import random
 from random import shuffle
 
 from sklearn.model_selection import train_test_split
@@ -8,7 +9,8 @@ import torch
 from torch import nn
 from torch.autograd import Variable
 from torch.utils.data import Dataset, DataLoader
-from torchvision.transforms import ToTensor
+from torchvision.transforms import ToTensor, ToPILImage
+import torchvision.transforms.functional as F
 
 from PIL import Image
 from skimage.transform import resize
@@ -21,6 +23,7 @@ from e2c_configs import *
 
 import numpy as np
 import cv2
+# from torchsummary import summary
 
 torch.set_default_dtype(torch.float32)
 
@@ -98,7 +101,7 @@ class E2C(nn.Module):
         mean, logvar = self.encode(x)
         mean_next, logvar_next = self.encode(x_next)
 
-        z, self.Qz = self.reparam(mean, logvar)
+        z, self.Qz = self.reparam(mean, logvar) # Q is approximate posterior
         z_next, self.Qz_next = self.reparam(mean_next, logvar_next)
 
         self.x_dec = self.decode(z)
@@ -188,8 +191,6 @@ class CarlaData(Dataset):
 
     @staticmethod
     def _process_img(img, img_width, img_height):
-        # PIL image convert: https://pillow.readthedocs.io/en/stable/reference/Image.html#PIL.Image.Image.convert
-        # ToTensor: https://pytorch.org/docs/stable/torchvision/transforms.html#torchvision.transforms.ToTensor
         return ToTensor()((img.convert('RGB').
                             resize((img_width, img_height))))
     @staticmethod
@@ -208,9 +209,14 @@ class CarlaData(Dataset):
             processed = []
             for frame_number in frame_numbers[:-1]: # ignore the last frame which does not have next frame
                 next_frame_number = "{:08d}".format(int(frame_number)+1)
+                # use PIL
                 x_val = Image.open(os.path.join(self.dir, frame_number+'.png'))
                 u_val = np.load(os.path.join(self.dir, frame_number+'.npy'))
                 x_next = Image.open(os.path.join(self.dir, next_frame_number+'.png'))
+                # use opencv2
+                x_val = cv2.imread(os.path.join(self.dir, frame_number+'.png'))
+                x_gray = cv2.cvtColor(x_val, cv2.COLOR_BGR2GRAY) # img.shape (88,200)
+
 
                 processed.append([self._process_img(x_val, self.img_width, self.img_height), 
                                   self._process_control(u_val), 
@@ -298,7 +304,7 @@ class CarlaDataPro(Dataset):
         # print(self.x_val[0].size()) #torch.Size([1, 88, 200]) 
         return self.x_val[index], self.u_val[index], self.x_next[index]
 
-def train():
+def train(model_path):
     ds_dir = '/home/ruihan/scenario_runner/data/'
     dataset = CarlaData(dir = ds_dir)
     x_val, u_val, x_next = dataset.query_data()
@@ -317,14 +323,14 @@ def train():
         model.train()
         train_losses = []
 
-        for i, (x, action, x_next) in enumerate(train_loader):
+        for i, (x, u, x_next) in enumerate(train_loader):
             # flatten the input images into a single 784 long vector
             x = x.view(x.shape[0], -1)
-            action = action.view(action.shape[0], -1)
+            u = u.view(u.shape[0], -1)
             x_next = x_next.view(x_next.shape[0], -1)
             
             optimizer.zero_grad()
-            model(x, action, x_next)
+            model(x, u, x_next)
             loss, _ = compute_loss(model.x_dec, model.x_next_pred_dec, x, x_next, model.Qz, model.Qz_next_pred, model.Qz_next)
             loss.backward()
             optimizer.step()
@@ -333,6 +339,53 @@ def train():
         print('epoch : {}, train loss : {:.4f}'\
            .format(epoch+1, np.mean(train_losses)))
 
+    model.eval()
+    torch.save(model, model_path)
+
+def test(model_path):
+    # test the model and check the image output
+
+    model = torch.load(model_path)
+    model.eval()
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
+    ds_dir = '/home/ruihan/scenario_runner/data/'
+    dataset = CarlaData(dir = ds_dir)
+    img_width = dataset.img_width
+    img_height = dataset.img_height
+    print("number of samples {}".format(len(dataset)))
+    num_test_samples = 1
+    test_samples = random.sample(range(0,len(dataset)-2), num_test_samples)
+    print("test_samples", test_samples)
+    for i in test_samples:
+        x = dataset[i][0]
+        x = x.view(1, -1)
+        u = dataset[i][1]
+        u = u.view(1, -1)
+        x_next = dataset[i][2]
+        x_next = x_next.view(1, -1)
+        print("x {}, u {}, x_next {}".format(x.size(), u.size(), x_next.size()))
+        # get latent vector z
+
+        # get predicted x_next
+        print("x_pred")
+        x_pred = model.predict(x, u)
+        print(x_pred)
+        # compare with true x_next
+
+        # convert x_next to image
+        x_next = torch.reshape(x_next,(3, img_height, img_width))
+        x_image = F.to_pil_image(x_next)
+        x_image.show(title='x_next')
+
+        # convert x_pred to image
+        x_pred = torch.reshape(x_pred,(3, img_height, img_width))
+        x_image = F.to_pil_image(x_pred)
+        x_image.show(title='x_pred')
+
+    
 if __name__ == '__main__':
     # make a funtion to partially test the program
-    train()
+    model_path = 'models/E2C/E2C_model_basic.pth'
+    train(model_path)
+    test(model_path)

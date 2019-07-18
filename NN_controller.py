@@ -181,7 +181,7 @@ if __name__ == '__main__':
 
 
 	model.eval()
-	torch.save(model, 'models/NN_model_relative_epo50.pth')
+	torch.save(model, 'models/MLP/NN_model_relative_epo50.pth')
 	
 	# test the model with testset
 	# test_preds = torch.LongTensor()

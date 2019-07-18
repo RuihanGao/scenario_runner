@@ -21,3 +21,9 @@ _out/
 data/*
 !data/processed.pkl
 
+# Not adding models
+models/
+
+# Not adding temp results
+results of e2c/
+
