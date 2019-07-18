@@ -177,7 +177,7 @@ class CarlaData(Dataset):
         self.dir = dir
         self.img_width = img_width
         self.img_height = img_height
-        self.x_dim = self.img_width*self.img_height*3 # RGB channels 
+        self.x_dim = self.img_width*self.img_height#*3 for RGB channels 
         self.u_dim = u_dim
         self.z_dim = 100 # TODO: check how to set this dim
         self._process()
@@ -191,8 +191,26 @@ class CarlaData(Dataset):
 
     @staticmethod
     def _process_img(img, img_width, img_height):
-        return ToTensor()((img.convert('RGB').
+        '''
+        convert color to gray scale
+        (check img_size)
+        convert image to tensor
+        '''
+
+        # use PIL
+        return ToTensor()((img.convert('L').
                             resize((img_width, img_height))))
+
+        # use cv2
+        # img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) # img.shape (88,200)
+        # height, width = img.shape
+        # if height != img_height or width != img_width:
+        #     print("cv2 resize img")
+        #     cv2.resize(img,(img_width,img_height))
+        # return torch.from_numpy(img).float()
+
+
+
     @staticmethod
     def _process_control(control):
         # convert a numpy array to tensor
@@ -201,6 +219,7 @@ class CarlaData(Dataset):
     def _process(self):
         preprocessed_file = os.path.join(self.dir, 'processed.pkl')
         if not os.path.exists(preprocessed_file):
+            print("write processed.pkl")
             # create data and dump
             imgs = sorted(glob(os.path.join(self.dir,"*.png"))) # sorted by frame numbers
             # shuffle(imgs) # if need randomness
@@ -210,15 +229,17 @@ class CarlaData(Dataset):
             for frame_number in frame_numbers[:-1]: # ignore the last frame which does not have next frame
                 next_frame_number = "{:08d}".format(int(frame_number)+1)
                 # use PIL
-                x_val = Image.open(os.path.join(self.dir, frame_number+'.png'))
-                u_val = np.load(os.path.join(self.dir, frame_number+'.npy'))
+                x = Image.open(os.path.join(self.dir, frame_number+'.png'))
+                u = np.load(os.path.join(self.dir, frame_number+'.npy'))
                 x_next = Image.open(os.path.join(self.dir, next_frame_number+'.png'))
+                
                 # use opencv2
-                x_val = cv2.imread(os.path.join(self.dir, frame_number+'.png'))
-                x_gray = cv2.cvtColor(x_val, cv2.COLOR_BGR2GRAY) # img.shape (88,200)
+                # x = cv2.imread(os.path.join(self.dir, frame_number+'.png'))
+                # u = np.load(os.path.join(self.dir, frame_number+'.npy'))
+                # x_next = cv2.imread(os.path.join(self.dir, next_frame_number+'.png'))
 
-                processed.append([self._process_img(x_val, self.img_width, self.img_height), 
-                                  self._process_control(u_val), 
+                processed.append([self._process_img(x, self.img_width, self.img_height), 
+                                  self._process_control(u), 
                                   self._process_img(x_next, self.img_width, self.img_height)])
 
             with open(preprocessed_file, 'wb') as f:
@@ -372,18 +393,31 @@ def test(model_path):
         print("x_pred")
         x_pred = model.predict(x, u)
         print(x_pred)
+
         # compare with true x_next
 
+        # use PIL
         # convert x_next to image
-        x_next = torch.reshape(x_next,(3, img_height, img_width))
+        x_next = torch.reshape(x_next,(1, img_height, img_width))
         x_image = F.to_pil_image(x_next)
         x_image.show(title='x_next')
+        x_next.permute(1, 2, 0).numpy()
+
 
         # convert x_pred to image
-        x_pred = torch.reshape(x_pred,(3, img_height, img_width))
+        x_pred = torch.reshape(x_pred,(1, img_height, img_width))
         x_image = F.to_pil_image(x_pred)
         x_image.show(title='x_pred')
+       
+        # use cv2
+    #     x_next = x_next.data.cpu().numpy().astype(np.int8).reshape((img_height, img_width))
+    #     cv2.imshow('x_next', x_next)
+    #     cv2.waitKey(0)
 
+    #     x_pred = x_pred.data.cpu().numpy().astype(np.int8).reshape((img_height, img_width))
+    #     cv2.imshow('x_pred', x_pred)
+    #     cv2.waitKey(0)
+    # cv2.destroyallWindows()
     
 if __name__ == '__main__':
     # make a funtion to partially test the program
