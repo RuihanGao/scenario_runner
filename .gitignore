@@ -19,7 +19,7 @@ results*.txt
 # Not adding collected data form manual_control.py
 _out/
 data/*
-!data/processed.pkl
+# !data/processed.pkl # too large
 
 # Not adding models
 models/
