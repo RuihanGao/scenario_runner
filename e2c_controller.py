@@ -97,22 +97,30 @@ class E2C(nn.Module):
         eps = Variable(eps)
         return eps.mul(std).add_(mean), NormalDistribution(mean, std, torch.log(std))
 
-    def forward(self, x, action, x_next):
+    def forward(self, x, action, x_next, tv=None, tv_next=None):
+
         self.x = x
         self.u = action
         mean, logvar = self.encode(x)
         mean_next, logvar_next = self.encode(x_next)
 
         self.z, self.Qz = self.reparam(mean, logvar) # Q is approximate posterior
-        z_next, self.Qz_next = self.reparam(mean_next, logvar_next)
+        self.z_next, self.Qz_next = self.reparam(mean_next, logvar_next)
 
         self.x_dec = self.decode(self.z)
-        self.x_next_dec = self.decode(z_next)
+        self.x_next_dec = self.decode(self.z_next)
 
         self.z_next_pred, self.Qz_next_pred = self.transition(self.z, self.Qz, action)
         self.x_next_pred_dec = self.decode(self.z_next_pred)
 
-        return self.x_next_pred_dec
+        if tv is None:
+            self.mode = 'control'
+            return self.x_next_pred_dec
+        else:
+            self.mode = 'ctv'
+            self.tv = tv
+            self.tv_next = tv_next
+            return self.x_next_pred_dec
 
     def latent_embeddings(self, x):
         return self.encode(x)[0]
@@ -127,7 +135,20 @@ class E2C(nn.Module):
     def save_z(self):
         # save(x, u, z) pairs
         return self.x.data.cpu().numpy(), self.u.data.cpu().numpy(), self.z.data.cpu().numpy()
-        
+
+
+    def save_ztv(self):
+        if self.mode == 'control':
+            raise ValueError("No ztv pairs to save in control mode")
+        else:
+            # TODO check whether should use hstack since dim 0 is batch number 
+            z = self.z.data.cpu().numpy()
+            tv = self.tv.data.cpu().numpy()
+            z_next = self.z_next.data.cpu().numpy()
+            tv_next = self.tv_next.data.cpu().numpy()    
+
+            return np.hstack((z,tv)), self.u.data.cpu().numpy(), np.hstack((z_next,tv_next))
+
 
 
 
@@ -181,13 +202,18 @@ class CarlaData(Dataset):
     the img size can be customized, check sensor/hud setting of collected data
     output: 3D control command: throttle, steer, brake
     '''
-    def __init__(self, dir, img_width = 200, img_height=88, u_dim=3):
+    def __init__(self, dir, img_width = 200, img_height=88, mode='control'):
         # find all available data
         self.dir = dir
         self.img_width = img_width
         self.img_height = img_height
-        self.x_dim = self.img_width*self.img_height#*3 for RGB channels 
-        self.u_dim = u_dim
+        self.x_dim = self.img_width*self.img_height#*3 for RGB channels
+        self.mode = mode
+        # if self.mode == 'ctv':
+        #     self.u_dim = 12 # c(3), t(6), v(3)
+        # else: # control
+        #     self.u_dim = 3
+        self.u_dim = 3
         self.z_dim = 100 # TODO: check how to set this dim
         self._process()
         self.valid_size = 1/6
@@ -205,21 +231,25 @@ class CarlaData(Dataset):
         (check img_size)
         convert image to tensor
         '''
-
         # use PIL
         return ToTensor()((img.convert('L').
                             resize((img_width, img_height))))
-
 
     @staticmethod
     def _process_control(control):
         # convert a numpy array to tensor
         return torch.from_numpy(control).float()
-    
+
+    @staticmethod
+    def _process_ctv(ctv):
+        # c(3), t(6), v(3)    
+        return torch.from_numpy(ctv[:3]).float(), torch.from_numpy(ctv[3:]).float()
+
+
     def _process(self):
         preprocessed_file = os.path.join(self.dir, 'processed.pkl')
         if not os.path.exists(preprocessed_file):
-            print("write processed.pkl")
+            print("writing processed.pkl")
             # create data and dump
             imgs = sorted(glob(os.path.join(self.dir,"*.png"))) # sorted by frame numbers
             # shuffle(imgs) # if need randomness
@@ -229,17 +259,33 @@ class CarlaData(Dataset):
                 next_frame_number = "{:08d}".format(int(frame_number)+1)
                 # use PIL
                 x = Image.open(os.path.join(self.dir, frame_number+'.png'))
-                u = np.load(os.path.join(self.dir, frame_number+'.npy'))
+                if self.mode == 'control':
+                    u = np.load(os.path.join(self.dir, frame_number+'.npy'))
+                elif self.mode == 'ctv':
+                    u = np.load(os.path.join(self.dir, frame_number+'_ctv.npy'))
+                    u_next = np.load(os.path.join(self.dir, next_frame_number+'_ctv.npy'))
+                else:
+                    raise ValueError("no suitable mode to load u data")
                 x_next_dir = os.path.join(self.dir, next_frame_number+'.png')
                 if not os.path.exists(x_next_dir):
                     # change climate will jump frame number
                     break
                 x_next = Image.open(x_next_dir)
+                if self.mode == 'control':
+                    processed.append([self._process_img(x, self.img_width, self.img_height), 
+                                      self._process_control(u), 
+                                      self._process_img(x_next, self.img_width, self.img_height)])
+                elif self.mode == 'ctv':
+                    u, tv = self._process_ctv(u)
+                    u_next, tv_next = self._process_ctv(u_next)
 
-                processed.append([self._process_img(x, self.img_width, self.img_height), 
-                                  self._process_control(u), 
-                                  self._process_img(x_next, self.img_width, self.img_height)])
-
+                    processed.append([self._process_img(x, self.img_width, self.img_height), 
+                                      tv, u, 
+                                      self._process_img(x_next, self.img_width, self.img_height),
+                                      tv_next])                   
+                else:
+                    raise ValueError("no suitable mode to load u data")
+            
             with open(preprocessed_file, 'wb') as f:
                 pickle.dump(processed, f)
             self._processed = processed
@@ -253,44 +299,30 @@ class CarlaData(Dataset):
     def query_data(self):
         if self._processed is None:
             raise ValueError("Dataset not loaded - call CarlaData._process() first.")
-
-        return list(zip(*self._processed))[0], list(zip(*self._processed))[1], list(zip(*self._processed))[2]
-
-    def split_dataset(self, batch_size):
-        """
-        computes (x_t,u_t,x_{t+1}) pair
-        returns tuple of 3 ndarrays with shape
-        (batch,x_dim), (batch, u_dim), (batch, x_dim)
-        # refer to plane_data2.py
-        """
-        if self._processed is None:
-            raise ValueError("Dataset not loaded - call CarlaData._process() first.")
-        pass
-
-
-
-    # @staticmethod
-    # def sample(cls, sample_size, output_dir, step_size = 1,
-    #             apply_control=True, num_shards=10):
-    #     # interface with Carla to collect data
-    #     # see HumanAgent instead of manual_control for reference of parsing sensor data. 
-    #     # sample images from manual_control are stored in /out folder, which are kind of spectator view
-    #     # TODO
-
-    #     # initialize the environment
-    #     # see wether can use manual_control or NPCAgent for collecting data
-
-    #     # agent.run() while saving images and control output
+        
+        if self.mode == 'control': # x, u, x_next
+            return list(zip(*self._processed))[0], list(zip(*self._processed))[1], list(zip(*self._processed))[2]
+        elif self.mode == 'ctv': # x, tv, u, x_next, tv_next
+            return list(zip(*self._processed))[0], list(zip(*self._processed))[1], list(zip(*self._processed))[2], list(zip(*self._processed))[3], list(zip(*self._processed))[4]
 
 
 class CarlaDataPro(Dataset):
-    def __init__(self, x_val, u_val, x_next):
+    def __init__(self, x_val, u_val, x_next, tv=None, tv_next=None):
         # x,val, u_val, x_next all should be in tensor form
         self.x_val = x_val # list of tensors
         self.u_val = u_val
         self.x_next = x_next
-        print("tensor type")
-        print(type(self.x_val[0]), type(self.u_val[0]), type(self.x_next[0]))
+        if tv is None:
+            self.mode = 'control'
+            print("tensor type")
+            print(type(self.x_val[0]), type(self.u_val[0]), type(self.x_next[0]))
+        else:
+            self.mode = 'ctv'
+            self.tv = tv
+            self.tv_next = tv_next
+            print("tensor type")
+            print(type(self.x_val[0]), type(self.u_val[0]), type(self.x_next[0]), type(self.tv[0]). type(self.tv_next[0]))
+
     def __len__(self):
         return len(self.x_val)
 
@@ -298,56 +330,109 @@ class CarlaDataPro(Dataset):
         # return the item at certain index
         # print(type(self.x_val), len(self.x_val)) # <class 'tuple'> 314
         # print(self.x_val[0].size()) #torch.Size([1, 88, 200]) 
-        return self.x_val[index], self.u_val[index], self.x_next[index]
+        if self.mode == 'control':
+            return self.x_val[index], self.u_val[index], self.x_next[index]
+        elif self.mode == 'ctv':
+            return self.x_val[index], self.u_val[index], self.x_next[index], \
+                self.tv[index], self.tv_next[index]
 
+def train(model_path, ds_dir, mode='control'):
+    dataset = CarlaData(dir=ds_dir, mode=mode)
+    if mode == 'control':
 
-def train(model_path):
-    ds_dir = '/home/ruihan/scenario_runner/data/'
-    dataset = CarlaData(dir = ds_dir)
-    x_val, u_val, x_next = dataset.query_data()
-
+        x_val, u_val, x_next = dataset.query_data()
+    elif mode == 'ctv':
+        # x, tv, u, x_next, tv_next
+        x_val, tv, u_val, x_next, tv_next = dataset.query_data()
 
     # build network
-    train_dataset = CarlaDataPro(x_val, u_val, x_next)
-    train_loader = DataLoader(dataset=train_dataset, batch_size=128, shuffle=True)
+    if mode == 'control':
+        train_dataset = CarlaDataPro(x_val, u_val, x_next)
+        train_loader = DataLoader(dataset=train_dataset, batch_size=128, shuffle=True)
 
-    model = E2C(dataset.x_dim, dataset.z_dim, dataset.u_dim)
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+        model = E2C(dataset.x_dim, dataset.z_dim, dataset.u_dim)
+        optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+
+    elif mode == 'ctv':
+        train_dataset = CarlaDataPro(x_val, u_val, x_next, tv=tv, tv_next=tv_next)
+        train_loader = DataLoader(dataset=train_dataset, batch_size=128, shuffle=True)
+
+        model = E2C(dataset.x_dim, dataset.z_dim, dataset.u_dim)
+        optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+
 
     epochs = 50
-
     lat_file = os.path.join(dataset.dir, 'lat.pkl')
+    ztv_file = os.path.join(dataset.dir, 'ztv_trans.pkl')
 
     for epoch in range(epochs):
         model.train()
         train_losses = []
 
-        for i, (x, u, x_next) in enumerate(train_loader):
-            # flatten the input images into a single 784 long vector
-            x = x.view(x.shape[0], -1)
-            u = u.view(u.shape[0], -1)
-            x_next = x_next.view(x_next.shape[0], -1)
-            
-            optimizer.zero_grad()
-            model(x, u, x_next)
-            x_save, u_save, z_save = model.save_z()
-            if epoch == epochs -1: # save latent vector during last epoch
-                lat = [x_save, u_save, z_save]
-                with open(lat_file, 'a+') as f:
-                    pickle.dump(lat, f)
+        if mode == 'control':
+            for i, (x, u, x_next) in enumerate(train_loader):
+                # flatten the input images into a single 784 long vector
+                x = x.view(x.shape[0], -1)
+                u = u.view(u.shape[0], -1)
+                x_next = x_next.view(x_next.shape[0], -1)
+                
+                optimizer.zero_grad()
+                model(x, u, x_next)
+                
+                if epoch == epochs -1: # save latent vector during last epoch
+                    x_save, u_save, z_save = model.save_z()
+                    lat = [x_save, u_save, z_save]
+                    with open(lat_file, 'wb') as f:
+                        # TODO: check whehter it is appending
+                        pickle.dump(lat, f)
 
-            loss, _ = compute_loss(model.x_dec, model.x_next_pred_dec, x, x_next, model.Qz, model.Qz_next_pred, model.Qz_next)
-            loss.backward()
-            optimizer.step()
-            train_losses.append(loss.item())
-        model.eval()
-        print('epoch : {}, train loss : {:.4f}'\
-           .format(epoch+1, np.mean(train_losses)))
+                loss, _ = compute_loss(model.x_dec, model.x_next_pred_dec, x, x_next, model.Qz, model.Qz_next_pred, model.Qz_next)
+                loss.backward()
+                optimizer.step()
+                train_losses.append(loss.item())
+            model.eval()
+            print('epoch : {}, train loss : {:.4f}'\
+               .format(epoch+1, np.mean(train_losses)))
+
+        elif mode == 'ctv':
+            for i, (x, u, x_next, tv, tv_next) in enumerate(train_loader):
+                x = x.view(x.shape[0], -1)
+                u = u.view(u.shape[0], -1)
+                x_next = x_next.view(x_next.shape[0], -1)
+                tv = tv.view(tv.shape[0], -1)
+                tv_next = tv_next.view(tv_next.shape[0], -1)
+
+                optimizer.zero_grad()
+                model(x, u, x_next, tv=tv, tv_next=tv_next)
+
+                if epoch == epochs -1: # save latent vector during last epoch
+                    x_save, u_save, z_save = model.save_z()
+                    lat = [x_save, u_save, z_save]
+                    with open(lat_file, 'wb') as f:
+                        # TODO: check whehter it is appending
+                        pickle.dump(lat, f)
+
+                    # for ctv mode, save ztv transition
+                    print("saving ztv")
+                    ztv_save, u_save, ztv_next_save = model.save_ztv()
+                    ztv = [ztv_save, u_save, ztv_next_save]
+                    with open(ztv_file, 'wb') as f:
+                        # TODO: check whehter it is appending
+                        pickle.dump(ztv, f)
+
+                loss, _ = compute_loss(model.x_dec, model.x_next_pred_dec, x, x_next, model.Qz, model.Qz_next_pred, model.Qz_next)
+                loss.backward()
+                optimizer.step()
+                train_losses.append(loss.item())
+            model.eval()
+            print('epoch : {}, train loss : {:.4f}'\
+               .format(epoch+1, np.mean(train_losses)))
 
     model.eval()
     torch.save(model, model_path)
 
-def test(model_path):
+def test(model_path, ds_dir, mode='control'):
+    dataset = CarlaData(dir=ds_dir, mode=mode)
     # test the model and check the image output
 
     model = torch.load(model_path)
@@ -400,19 +485,25 @@ def test(model_path):
         x_image.show(title='x_pred')
 
 def train_dynamics():
+    '''
+    load (ztv, u, ztv_next) pairs from the dataset (iteratively pickle load)
+    build a model to approximate dynamics, similar to transion model in e2c
+    '''
+
     pass
     
 if __name__ == '__main__':
     # config dataset path
-    # ds_dir = '/home/ruihan/scenario_runner/data/' # used to generate E2C_model_basic
-    ds_dir = '/home/ruihan/scenario_runner/data_mini/' # used to try dynamics model
-    dataset = CarlaData(dir = ds_dir)
+    # ds_dir = '/home/ruihan/scenario_runner/data/' # used to generate E2C_model_basic, image + c
+    # ds_dir = '/home/ruihan/scenario_runner/data_mini/' # used to try dynamics model, image + ctv
+    ds_dir = '/home/ruihan/scenario_runner/data_ctv/'
+    mode='ctv'
 
     # config model path
     # model_path = 'models/E2C/E2C_model_basic.pth'
-    model_path = 'models/E2C/E2C_model_try.pth'
-    train(model_path)
-    test(model_path)
+    # model_path = 'models/E2C/E2C_model_try.pth'
+    train(model_path, ds_dir, mode)
+    test(model_path, ds_dir, mode)
 
     # train_dynamics()
 

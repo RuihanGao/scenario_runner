@@ -630,14 +630,14 @@ class CameraManager(object):
             image.save_to_disk('data_mini/%08d' % image.frame_number)
 
     def save_control_for_e2c(self, frame_number, control):
-        path = 'data_mini/{:08d}'.format(frame_number) # keep consistent with image.save_to_disk
+        path = 'data_ctv/{:08d}'.format(frame_number) # keep consistent with image.save_to_disk
         print("path for npy", path)
         x = np.array([control.throttle, control.steer, control.brake])
         print("control in array", x)
         np.save(path, x)
 
     def save_ctv_for_e2c(self, frame_number, control, transform, velocity):
-        path = 'data_mini/{:08d}_ctv'.format(frame_number) # keep consistent with image.save_to_disk
+        path = 'data_ctv/{:08d}_ctv'.format(frame_number) # keep consistent with image.save_to_disk
         print("path for npy", path)
         loc = transform.location
         rot = transform.rotation
@@ -660,7 +660,7 @@ class CameraManager(object):
         velocity = self._parent.get_velocity() # x, y, z
 
         # self.save_control_for_e2c(frame_number, control)
-        self.save_ctv_for_e2c(self, frame_number, control, transform, velocity):
+        self.save_ctv_for_e2c(frame_number, control, transform, velocity)
         
 # ==============================================================================
 # -- game_loop() ---------------------------------------------------------------
