@@ -201,15 +201,6 @@ class CarlaData(Dataset):
         return ToTensor()((img.convert('L').
                             resize((img_width, img_height))))
 
-        # use cv2
-        # img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) # img.shape (88,200)
-        # height, width = img.shape
-        # if height != img_height or width != img_width:
-        #     print("cv2 resize img")
-        #     cv2.resize(img,(img_width,img_height))
-        # return torch.from_numpy(img).float()
-
-
 
     @staticmethod
     def _process_control(control):
@@ -232,11 +223,6 @@ class CarlaData(Dataset):
                 x = Image.open(os.path.join(self.dir, frame_number+'.png'))
                 u = np.load(os.path.join(self.dir, frame_number+'.npy'))
                 x_next = Image.open(os.path.join(self.dir, next_frame_number+'.png'))
-                
-                # use opencv2
-                # x = cv2.imread(os.path.join(self.dir, frame_number+'.png'))
-                # u = np.load(os.path.join(self.dir, frame_number+'.npy'))
-                # x_next = cv2.imread(os.path.join(self.dir, next_frame_number+'.png'))
 
                 processed.append([self._process_img(x, self.img_width, self.img_height), 
                                   self._process_control(u), 
@@ -255,11 +241,6 @@ class CarlaData(Dataset):
     def query_data(self):
         if self._processed is None:
             raise ValueError("Dataset not loaded - call CarlaData._process() first.")
-        # self.x_val = self._processed[:, 0]
-        # self.u_val = self._processed[:, 1]
-        # self.x_next = self._processed[:, 2]
-        # print("self._processed", len(self._processed))
-        # print(self._processed[0])
 
         return list(zip(*self._processed))[0], list(zip(*self._processed))[1], list(zip(*self._processed))[2]
 
@@ -379,7 +360,9 @@ def test(model_path):
     num_test_samples = 1
     test_samples = random.sample(range(0,len(dataset)-2), num_test_samples)
     print("test_samples", test_samples)
+
     for i in test_samples:
+        i = 32611
         x = dataset[i][0]
         x = x.view(1, -1)
         u = dataset[i][1]
@@ -397,31 +380,35 @@ def test(model_path):
         # compare with true x_next
 
         # use PIL
+        # convert x to image
+        x = torch.reshape(x,(1, img_height, img_width))
+        x_image = F.to_pil_image(x)
+        x_image.show(title='x')
+        x_image.save("x.png", "PNG")
+        x_image.show(title='x')
+
         # convert x_next to image
         x_next = torch.reshape(x_next,(1, img_height, img_width))
+        print("after reshape", x_next.size())
         x_image = F.to_pil_image(x_next)
+        print("after converting")
+        print(x_image)
+        x_image.save("x_next.png", "PNG")
         x_image.show(title='x_next')
-        x_next.permute(1, 2, 0).numpy()
-
 
         # convert x_pred to image
         x_pred = torch.reshape(x_pred,(1, img_height, img_width))
         x_image = F.to_pil_image(x_pred)
         x_image.show(title='x_pred')
-       
-        # use cv2
-    #     x_next = x_next.data.cpu().numpy().astype(np.int8).reshape((img_height, img_width))
-    #     cv2.imshow('x_next', x_next)
-    #     cv2.waitKey(0)
+        x_image.save("x_pred.png", "PNG")
 
-    #     x_pred = x_pred.data.cpu().numpy().astype(np.int8).reshape((img_height, img_width))
-    #     cv2.imshow('x_pred', x_pred)
-    #     cv2.waitKey(0)
-    # cv2.destroyallWindows()
+
     
 if __name__ == '__main__':
     # make a funtion to partially test the program
     model_path = 'models/E2C/E2C_model_basic.pth'
-    train(model_path)
+    # train(model_path)
     test(model_path)
+
+    train_dynamics()
 
