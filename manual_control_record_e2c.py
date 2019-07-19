@@ -600,7 +600,7 @@ class CameraManager(object):
             display.blit(self._surface, (0, 0))
 
     @staticmethod
-    def _parse_image(weak_self, image):
+    def _parse_image(weak_self, image, save_dir):
         self = weak_self()
         if not self:
             return
@@ -627,40 +627,43 @@ class CameraManager(object):
         if self._recording:
             # RH: change the path from '_out/%08d' to 'data/%08d', 
             #   seems to restore all prev files even after "moving the folder to Trash"
-            image.save_to_disk('data_mini/%08d' % image.frame_number)
+            # image.save_to_disk('data_ctv/%08d' % image.frame_number)
+            image.save_to_disk(save_dir+'{:08d}'.format(image.frame_number))
 
-    def save_control_for_e2c(self, frame_number, control):
-        path = 'data_ctv/{:08d}'.format(frame_number) # keep consistent with image.save_to_disk
+    def save_control_for_e2c(self, frame_number, control, save_dir):
+        path = save_dir+'{:08d}_ctv'.format(frame_number) # keep consistent with image.save_to_disk
         print("path for npy", path)
         x = np.array([control.throttle, control.steer, control.brake])
         print("control in array", x)
         np.save(path, x)
 
-    def save_ctv_for_e2c(self, frame_number, control, transform, velocity):
-        path = 'data_ctv/{:08d}_ctv'.format(frame_number) # keep consistent with image.save_to_disk
+
+    def save_ctv_for_e2c(self, frame_number, control, transform, velocity, save_dir):
+        path = save_dir+'{:08d}_ctv'.format(frame_number) # keep consistent with image.save_to_disk
         print("path for npy", path)
         loc = transform.location
         rot = transform.rotation
         x = np.array([control.throttle, control.steer, control.brake, \
                       loc.x, loc.y, loc.z, rot.yaw, rot.pitch, rot.roll, \
                       velocity.x, velocity.y, velocity.z])
-        print("control in array", x)
-        np.save(path, x)     
+        print("ctv in array", x)
+        np.save(path, x)
 
     def _parse_image_and_save(self, image):
         # parse the image as above
         # Note: convert, save_to_disk methods are from carla.Image class 
         # see https://carla.readthedocs.io/en/latest/python_api/#carlaimagecarlasensordata-class
+        save_dir = 'data_ctv_mini/'
         weak_self = weakref.ref(self)
-        self._parse_image(weak_self, image)
+        self._parse_image(weak_self, image, save_dir)
         # save control in another file with same frame number so that it's easier to read data
         frame_number = image.frame_number
         control = self._parent.get_control() # CameraManager._parent => world.vehicle
         transform = self._parent.get_transform()
-        velocity = self._parent.get_velocity() # x, y, z
+        velocity = self._parent.get_velocity()
 
-        # self.save_control_for_e2c(frame_number, control)
-        self.save_ctv_for_e2c(frame_number, control, transform, velocity)
+        # self.save_control_for_e2c(frame_number, control, save_dir)
+        self.save_ctv_for_e2c(frame_number, control, transform, velocity, save_dir)
         
 # ==============================================================================
 # -- game_loop() ---------------------------------------------------------------

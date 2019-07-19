@@ -202,9 +202,9 @@ class CarlaData(Dataset):
     the img size can be customized, check sensor/hud setting of collected data
     output: 3D control command: throttle, steer, brake
     '''
-    def __init__(self, dir, img_width = 200, img_height=88, mode='control'):
+    def __init__(self, ds_dir, img_width = 200, img_height=88, mode='control'):
         # find all available data
-        self.dir = dir
+        self.dir = ds_dir
         self.img_width = img_width
         self.img_height = img_height
         self.x_dim = self.img_width*self.img_height#*3 for RGB channels
@@ -299,7 +299,7 @@ class CarlaData(Dataset):
     def query_data(self):
         if self._processed is None:
             raise ValueError("Dataset not loaded - call CarlaData._process() first.")
-        
+        print("_processed length", len(self._processed))
         if self.mode == 'control': # x, u, x_next
             return list(zip(*self._processed))[0], list(zip(*self._processed))[1], list(zip(*self._processed))[2]
         elif self.mode == 'ctv': # x, tv, u, x_next, tv_next
@@ -337,7 +337,7 @@ class CarlaDataPro(Dataset):
                 self.tv[index], self.tv_next[index]
 
 def train(model_path, ds_dir, mode='control'):
-    dataset = CarlaData(dir=ds_dir, mode=mode)
+    dataset = CarlaData(ds_dir=ds_dir, mode=mode)
     if mode == 'control':
 
         x_val, u_val, x_next = dataset.query_data()
@@ -432,15 +432,15 @@ def train(model_path, ds_dir, mode='control'):
     torch.save(model, model_path)
 
 def test(model_path, ds_dir, mode='control'):
-    dataset = CarlaData(dir=ds_dir, mode=mode)
+    dataset = CarlaData(ds_dir=ds_dir, mode=mode)
     # test the model and check the image output
 
     model = torch.load(model_path)
     model.eval()
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-    ds_dir = '/home/ruihan/scenario_runner/data/'
-    dataset = CarlaData(dir = ds_dir)
+    ds_dir = ds_dir
+    dataset = CarlaData(ds_dir = ds_dir)
     img_width = dataset.img_width
     img_height = dataset.img_height
     print("number of samples {}".format(len(dataset)))
@@ -449,12 +449,19 @@ def test(model_path, ds_dir, mode='control'):
     print("test_samples", test_samples)
 
     for i in test_samples:
-        i = 32611
-        x = dataset[i][0]
+        if mode == 'control':
+            x = dataset[i][0]
+            u = dataset[i][1]
+            x_next = dataset[i][2]
+
+        else:
+            # in 'ctv' mode, x_val, tv, u_val, x_next, tv_next = dataset.query_data()
+            x = dataset[i][0]
+            u = dataset[i][2]
+            x_next = dataset[i][3]    
+
         x = x.view(1, -1)
-        u = dataset[i][1]
         u = u.view(1, -1)
-        x_next = dataset[i][2]
         x_next = x_next.view(1, -1)
         print("x {}, u {}, x_next {}".format(x.size(), u.size(), x_next.size()))
         # get latent vector z
@@ -496,13 +503,14 @@ if __name__ == '__main__':
     # config dataset path
     # ds_dir = '/home/ruihan/scenario_runner/data/' # used to generate E2C_model_basic, image + c
     # ds_dir = '/home/ruihan/scenario_runner/data_mini/' # used to try dynamics model, image + ctv
-    ds_dir = '/home/ruihan/scenario_runner/data_ctv/'
+    ds_dir = '/home/ruihan/scenario_runner/data_ctv_mini/'
     mode='ctv'
 
     # config model path
     # model_path = 'models/E2C/E2C_model_basic.pth'
     # model_path = 'models/E2C/E2C_model_try.pth'
-    train(model_path, ds_dir, mode)
+    model_path = 'models/E2C/E2C_model_ctv.pth'
+    # train(model_path, ds_dir, mode)
     test(model_path, ds_dir, mode)
 
     # train_dynamics()
