@@ -25,6 +25,6 @@ data/*
 models/
 
 # Not adding temp results
-results of e2c/
+results_of_e2c/
 
 

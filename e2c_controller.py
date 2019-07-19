@@ -98,16 +98,18 @@ class E2C(nn.Module):
         return eps.mul(std).add_(mean), NormalDistribution(mean, std, torch.log(std))
 
     def forward(self, x, action, x_next):
+        self.x = x
+        self.u = action
         mean, logvar = self.encode(x)
         mean_next, logvar_next = self.encode(x_next)
 
-        z, self.Qz = self.reparam(mean, logvar) # Q is approximate posterior
+        self.z, self.Qz = self.reparam(mean, logvar) # Q is approximate posterior
         z_next, self.Qz_next = self.reparam(mean_next, logvar_next)
 
-        self.x_dec = self.decode(z)
+        self.x_dec = self.decode(self.z)
         self.x_next_dec = self.decode(z_next)
 
-        self.z_next_pred, self.Qz_next_pred = self.transition(z, self.Qz, action)
+        self.z_next_pred, self.Qz_next_pred = self.transition(self.z, self.Qz, action)
         self.x_next_pred_dec = self.decode(self.z_next_pred)
 
         return self.x_next_pred_dec
@@ -121,6 +123,13 @@ class E2C(nn.Module):
         z, Qz = self.reparam(mean, logvar)
         z_next_pred, Qz_next_pred = self.transition(z, Qz, U)
         return self.decode(z_next_pred)
+    
+    def save_z(self):
+        # save(x, u, z) pairs
+        return self.x.data.cpu().numpy(), self.u.data.cpu().numpy(), self.z.data.cpu().numpy()
+        
+
+
 
 
 def KLDGaussian(Q, N, eps=1e-8):
@@ -215,14 +224,17 @@ class CarlaData(Dataset):
             imgs = sorted(glob(os.path.join(self.dir,"*.png"))) # sorted by frame numbers
             # shuffle(imgs) # if need randomness
             frame_numbers = [img.split('/')[-1].split('.')[0] for img in imgs]
-            
             processed = []
             for frame_number in frame_numbers[:-1]: # ignore the last frame which does not have next frame
                 next_frame_number = "{:08d}".format(int(frame_number)+1)
                 # use PIL
                 x = Image.open(os.path.join(self.dir, frame_number+'.png'))
                 u = np.load(os.path.join(self.dir, frame_number+'.npy'))
-                x_next = Image.open(os.path.join(self.dir, next_frame_number+'.png'))
+                x_next_dir = os.path.join(self.dir, next_frame_number+'.png')
+                if not os.path.exists(x_next_dir):
+                    # change climate will jump frame number
+                    break
+                x_next = Image.open(x_next_dir)
 
                 processed.append([self._process_img(x, self.img_width, self.img_height), 
                                   self._process_control(u), 
@@ -254,23 +266,6 @@ class CarlaData(Dataset):
         if self._processed is None:
             raise ValueError("Dataset not loaded - call CarlaData._process() first.")
         pass
-
-    #         # copy from __getitem__ in coil_dataset
-    #         img_path = os.path.join(self.root_dir,
-    #                                 self.sensor_data_names[index].split('/')[-2],
-    #                                 self.sensor_data_names[index].split('/')[-1])
-
-    #         img = cv2.imread(img_path, cv2.IMREAD_COLOR)
-    #         # Apply the image transformation
-    #         if self.transform is not None:
-    #             boost = 1
-    #             img = self.transform(self.batch_read_number * boost, img)
-    #         else:
-    #             img = img.transpose(2, 0, 1)
-
-    #         img = img.astype(np.float)
-    #         img = torch.from_numpy(img).type(torch.FloatTensor)
-    #         img = img / 255.
 
 
 
@@ -321,10 +316,11 @@ def train(model_path):
 
     epochs = 50
 
+    lat_file = os.path.join(dataset.dir, 'lat.pkl')
+
     for epoch in range(epochs):
         model.train()
         train_losses = []
-
 
         for i, (x, u, x_next) in enumerate(train_loader):
             # flatten the input images into a single 784 long vector
@@ -334,6 +330,12 @@ def train(model_path):
             
             optimizer.zero_grad()
             model(x, u, x_next)
+            x_save, u_save, z_save = model.save_z()
+            if epoch == epochs -1: # save latent vector during last epoch
+                lat = [x_save, u_save, z_save]
+                with open(lat_file, 'a+') as f:
+                    pickle.dump(lat, f)
+
             loss, _ = compute_loss(model.x_dec, model.x_next_pred_dec, x, x_next, model.Qz, model.Qz_next_pred, model.Qz_next)
             loss.backward()
             optimizer.step()
@@ -373,9 +375,7 @@ def test(model_path):
         # get latent vector z
 
         # get predicted x_next
-        print("x_pred")
         x_pred = model.predict(x, u)
-        print(x_pred)
 
         # compare with true x_next
 
@@ -383,32 +383,36 @@ def test(model_path):
         # convert x to image
         x = torch.reshape(x,(1, img_height, img_width))
         x_image = F.to_pil_image(x)
-        x_image.show(title='x')
-        x_image.save("x.png", "PNG")
+        x_image.save("results_of_e2c/gray_scale/x.png", "PNG")
         x_image.show(title='x')
 
         # convert x_next to image
         x_next = torch.reshape(x_next,(1, img_height, img_width))
         print("after reshape", x_next.size())
         x_image = F.to_pil_image(x_next)
-        print("after converting")
-        print(x_image)
-        x_image.save("x_next.png", "PNG")
+        x_image.save("results_of_e2c/gray_scale/x_next.png", "PNG")
         x_image.show(title='x_next')
 
         # convert x_pred to image
         x_pred = torch.reshape(x_pred,(1, img_height, img_width))
         x_image = F.to_pil_image(x_pred)
+        x_image.save("results_of_e2c/gray_scale/x_pred.png", "PNG")
         x_image.show(title='x_pred')
-        x_image.save("x_pred.png", "PNG")
 
-
+def train_dynamics():
+    pass
     
 if __name__ == '__main__':
-    # make a funtion to partially test the program
-    model_path = 'models/E2C/E2C_model_basic.pth'
-    # train(model_path)
+    # config dataset path
+    # ds_dir = '/home/ruihan/scenario_runner/data/' # used to generate E2C_model_basic
+    ds_dir = '/home/ruihan/scenario_runner/data_mini/' # used to try dynamics model
+    dataset = CarlaData(dir = ds_dir)
+
+    # config model path
+    # model_path = 'models/E2C/E2C_model_basic.pth'
+    model_path = 'models/E2C/E2C_model_try.pth'
+    train(model_path)
     test(model_path)
 
-    train_dynamics()
+    # train_dynamics()
 
