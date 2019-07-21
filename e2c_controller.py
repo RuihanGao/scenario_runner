@@ -125,8 +125,7 @@ class E2C(nn.Module):
     def latent_embeddings(self, x):
         return self.encode(x)[0]
 
-    def predict(self, X, U):
-        # RH: relationship with forward? got several lines in common 
+    def predict(self, X, U): 
         mean, logvar = self.encode(X)
         z, Qz = self.reparam(mean, logvar)
         z_next_pred, Qz_next_pred = self.transition(z, Qz, U)
@@ -148,10 +147,6 @@ class E2C(nn.Module):
             tv_next = self.tv_next.data.cpu().numpy()    
 
             return np.hstack((z,tv)), self.u.data.cpu().numpy(), np.hstack((z_next,tv_next))
-
-
-
-
 
 def KLDGaussian(Q, N, eps=1e-8):
     """KL Divergence between two Gaussians

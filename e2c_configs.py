@@ -186,7 +186,8 @@ class CarlaEncoder(Encoder):
             nn.Linear(150, 150),
             nn.BatchNorm1d(150),
             nn.ReLU(),
-            nn.Linear(150, dim_out*2) # TODO: why *2
+            nn.Linear(150, dim_out*2)
+            # *2 to split into two branches , mu and sigma, seen in Fig1, governed by loss func
         )
         super(CarlaEncoder, self).__init__(m, dim_in, dim_out)
 
