@@ -34,7 +34,7 @@ class Encoder_cat(nn.Module):
 		)
 
 		# for m, directly copy m and set var to a constant, see in forward
-		
+
 	def forward(self, img, m):
 		'''
 		separate the module into two parts,
@@ -200,3 +200,6 @@ class E2C_cat(nn.Module):
 	
 	def cat(self, img, m):
 		return torch.cat([img, m], dim=1)
+
+	def split(self, x_dec):
+		return torch.split(x_dec, (self.dim_img, self.dim_m), dim=1)

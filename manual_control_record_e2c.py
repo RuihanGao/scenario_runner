@@ -653,7 +653,7 @@ class CameraManager(object):
         # parse the image as above
         # Note: convert, save_to_disk methods are from carla.Image class 
         # see https://carla.readthedocs.io/en/latest/python_api/#carlaimagecarlasensordata-class
-        save_dir = 'data_ctv_mini/'
+        save_dir = 'data_ctv_rgb/'
         weak_self = weakref.ref(self)
         self._parse_image(weak_self, image, save_dir)
         # save control in another file with same frame number so that it's easier to read data

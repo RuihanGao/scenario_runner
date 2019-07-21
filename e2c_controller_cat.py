@@ -28,7 +28,7 @@ import cv2
 torch.set_default_dtype(torch.float32)
 
 def binary_crossentropy(t, o, eps=1e-8):
-	print("in binary")
+	# print("in binary")
 	return t * torch.log(o + eps) + (1.0 - t) * torch.log(1.0 - o + eps)
 
 
@@ -98,12 +98,12 @@ def compute_loss(x_dec, x_next_pred_dec, x, x_next,
 	# 	  x_dec.size(), x_next_pred_dec.size(), x.size(), x_next.size()))  # torch.Size([128, 17609])
 	# Qz  <e2c_controller_cat.NormalDistribution object at 0x7f940bc49320>
 	# Reconstruction losses
-	if False:
-		print("if False")
+	if True:
+		# print("if False")
 		x_reconst_loss = (x_dec - x_next).pow(2).sum(dim=1)
 		x_next_reconst_loss = (x_next_pred_dec - x_next).pow(2).sum(dim=1)
 	else:
-		print("else")
+		# print("else")
 		x_reconst_loss = -binary_crossentropy(x, x_dec).sum(dim=1)
 		x_next_reconst_loss = -binary_crossentropy(x_next, x_next_pred_dec).sum(dim=1)
 
@@ -115,21 +115,7 @@ def compute_loss(x_dec, x_next_pred_dec, x, x_next,
 	KLD = torch.sum(KLD_element, dim=1).mul(-0.5)
 	# print("KLD {}".format(KLD))
 	# ELBO
-	print(x.size(), binary_crossentropy(x, x_dec).size())
-	# print("x")
-	# print(x)
-	# print("x_dec")
-	# print(x_dec)
-	print("binary_crossentropy")
-	print(binary_crossentropy(x, x_dec)[:, -15:])
-
-
-
-	print("x_reconst_loss")
-	print(x_reconst_loss)
-	print("x_next_reconst_loss")
-	print(x_next_reconst_loss)
-
+	# print(x.size(), binary_crossentropy(x, x_dec).size())
 
 	bound_loss = x_reconst_loss.add(x_next_reconst_loss).add(KLD)
 	# print("bound_loss {}".format(bound_loss))
@@ -274,10 +260,10 @@ def train(model_path, ds_dir):
 			x =model.cat(img, m)
 			x_next = model.cat(img_next, m_next)
 			loss, _ = compute_loss(model.x_dec, model.x_next_pred_dec, x, x_next, model.Qz, model.Qz_next_pred, model.Qz_next)
-			
 			loss.backward()
 			optimizer.step()
 			train_losses.append(loss.item())
+
 		model.eval()
 		print('epoch : {}, train loss : {:.4f}'\
 		   .format(epoch+1, np.mean(train_losses)))
@@ -285,8 +271,8 @@ def train(model_path, ds_dir):
 	model.eval()
 	torch.save(model, model_path)
 
-def test(model_path, ds_dir, mode='control'):
-	dataset = CarlaData(ds_dir=ds_dir, mode=mode)
+def test(model_path, ds_dir):
+	dataset = CarlaData(ds_dir=ds_dir)
 	# test the model and check the image output
 
 	model = torch.load(model_path)
@@ -310,7 +296,7 @@ def test(model_path, ds_dir, mode='control'):
 		m_next = dataset[i][4]   
 
 		img = img.view(1, -1)
-		m = m.vie(1, -1)
+		m = m.view(1, -1)
 		u = u.view(1, -1)
 		img_next = img_next.view(1, -1)
 		m_next = m_next.view(1, -1)
@@ -319,7 +305,7 @@ def test(model_path, ds_dir, mode='control'):
 		# z = model.latent_embeddings(img, m)
 
 		# get predicted x_next
-		img_pred = model.predict(img, m, u)
+		pred = model.predict(img, m, u)
 
 		# convert x to image
 		img = torch.reshape(img,(1, img_height, img_width))
@@ -334,24 +320,26 @@ def test(model_path, ds_dir, mode='control'):
 		x_image.save("results_of_e2c/gray_scale/x_next.png", "PNG")
 		x_image.show(title='img_next')
 
-		# convert x_pred to image
+		# convert x_pred to images
+		img_pred, m_pred = model.split(pred)
 		img_pred = torch.reshape(img_pred,(1, img_height, img_width))
 		x_image = F.to_pil_image(img_pred)
 		x_image.save("results_of_e2c/gray_scale/x_pred.png", "PNG")
 		x_image.show(title='img_pred')
 
+		print("predicted m", m_pred)
 
 if __name__ == '__main__':
 	# config dataset path
 	# ds_dir = '/home/ruihan/scenario_runner/data/' # used to generate E2C_model_basic, image + c
 	# ds_dir = '/home/ruihan/scenario_runner/data_mini/' # used to try dynamics model, image + ctv
-	ds_dir = '/home/ruihan/scenario_runner/data_ctv_mini/'
+	ds_dir = '/home/ruihan/scenario_runner/data_ctv_rgb/'
 
 	# config model path
 	# model_path = 'models/E2C/E2C_model_basic.pth'
 	# model_path = 'models/E2C/E2C_model_try.pth'
 	model_path = 'models/E2C/E2C_model_ctv_for_cat.pth'
-	train(model_path, ds_dir)
+	# train(model_path, ds_dir)
 	test(model_path, ds_dir)
 
 	# train_dynamics()
