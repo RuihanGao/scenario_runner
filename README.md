@@ -154,7 +154,8 @@ ruihan@depend-XPS-8930:~/UnrealEngine_4.22/carla/Unreal/CarlaUE4/Saved/StagedBui
 (coiltraine) ruihan@depend-XPS-8930:~/scenario_runner$ python manual_control_record_e2c.py 
 ```
 collected data (image .png and control .npy) are saved in `/data` folder but are not uploaded to remote repo
-2. Parse data and train the model `(coiltraine) ruihan@depend-XPS-8930:~/scenario_runner$ python e2c_controller.py`, which load the `/data/processed.pkl` file as data source. 
+2. Parse data and train the model `(coiltraine) ruihan@depend-XPS-8930:~/scenario_runner$ python e2c_controller.py` **OR** `e2c_controller_cat.py` (which concatenate measurement to latent vector), which load the `/data/processed.pkl` file as data source. 
+3. Note: modify `save_dir` in `manual_control_record_e2c.py`, `ds_dir` and `model_path` in `e2c_controller_cat.py`, corespondingly.
 
 
 
