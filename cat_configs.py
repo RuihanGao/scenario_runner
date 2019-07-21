@@ -33,10 +33,8 @@ class Encoder_cat(nn.Module):
 			nn.Linear(150, dim_out*2) 
 		)
 
-		# self.cat = nn.Identity() # a constant layer linear function
-		self.cat = nn.Sequential(
-			nn.Linear(dim_m, dim_m*2)) # try to cal mean and var
-
+		# for m, directly copy m and set var to a constant, see in forward
+		
 	def forward(self, img, m):
 		'''
 		separate the module into two parts,
@@ -44,7 +42,8 @@ class Encoder_cat(nn.Module):
 		the other is a constant linear layer to pass measurement m
 		'''
 		img_mean, img_var = self.enc(img).chunk(2, dim=1)
-		m_mean, m_var = self.cat(m).chunk(2, dim=1)
+		m_mean = m
+		m_var = torch.Tensor(m.size()).uniform_(0.1, 0.9)
 		# concate the tensors
 		mean = torch.cat([img_mean, m_mean], dim=1)
 		var = torch.cat([img_var, m_var], dim=1)

@@ -28,6 +28,7 @@ import cv2
 torch.set_default_dtype(torch.float32)
 
 def binary_crossentropy(t, o, eps=1e-8):
+	print("in binary")
 	return t * torch.log(o + eps) + (1.0 - t) * torch.log(1.0 - o + eps)
 
 
@@ -98,24 +99,42 @@ def compute_loss(x_dec, x_next_pred_dec, x, x_next,
 	# Qz  <e2c_controller_cat.NormalDistribution object at 0x7f940bc49320>
 	# Reconstruction losses
 	if False:
+		print("if False")
 		x_reconst_loss = (x_dec - x_next).pow(2).sum(dim=1)
 		x_next_reconst_loss = (x_next_pred_dec - x_next).pow(2).sum(dim=1)
 	else:
+		print("else")
 		x_reconst_loss = -binary_crossentropy(x, x_dec).sum(dim=1)
 		x_next_reconst_loss = -binary_crossentropy(x_next, x_next_pred_dec).sum(dim=1)
 
 	logvar = Qz.logsigma.mul(2)
-	print("logvar {}".format(logvar))
+	# print("logvar {}".format(logvar))
 	KLD_element = Qz.mu.pow(2).add_(logvar.exp()).mul_(-1).add_(1).add_(logvar)
-	print("KLD_element")
-	print(KLD_element)
+	# print("KLD_element")
+	# print(KLD_element)
 	KLD = torch.sum(KLD_element, dim=1).mul(-0.5)
-	print("KLD {}".format(KLD))
+	# print("KLD {}".format(KLD))
 	# ELBO
+	print(x.size(), binary_crossentropy(x, x_dec).size())
+	# print("x")
+	# print(x)
+	# print("x_dec")
+	# print(x_dec)
+	print("binary_crossentropy")
+	print(binary_crossentropy(x, x_dec)[:, -15:])
+
+
+
+	print("x_reconst_loss")
+	print(x_reconst_loss)
+	print("x_next_reconst_loss")
+	print(x_next_reconst_loss)
+
+
 	bound_loss = x_reconst_loss.add(x_next_reconst_loss).add(KLD)
-	print("bound_loss {}".format(bound_loss))
+	# print("bound_loss {}".format(bound_loss))
 	kl = KLDGaussian(Qz_next_pred, Qz_next)
-	print("kl {}".format(kl))
+	# print("kl {}".format(kl))
 	return bound_loss.mean(), kl.mean()
 
 # create a class for the dataset

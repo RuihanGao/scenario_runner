@@ -228,7 +228,11 @@ class ScenarioRunner(object):
         """
 
         if args.reloadWorld:
-            self.world = self.client.load_world(town)
+            # self.world = self.client.load_world(town)
+            self.client.load_world(town)
+            self.world = self.client.get_world()
+            print(self.world.get_map())
+            self.world = self.client.get_world()
         else:
             if CarlaDataProvider.get_map().name != town:
                 print("The CARLA server uses the wrong map!")
