@@ -136,7 +136,7 @@ class CarlaData(Dataset):
 		self.img_height = img_height
 		self.dim_img = self.img_width*self.img_height # *3 for RGB channels
 		self.dim_img_lat = 100 # TODO: customize
-		self.dim_m = 9 # transform (6), velocity(9)
+		self.dim_m = 6 # 9 for transform (6), velocity(9)
 		self.dim_u = 3
 		# self.dim_z = self.dim_img_lat + self.dim_m  # done in E2C_cat __init__
 		self._process()
@@ -236,7 +236,7 @@ def train(model_path, ds_dir):
 	train_loader = DataLoader(dataset=train_dataset, batch_size=128, shuffle=True)
 
 	model = E2C_cat(dataset.dim_img, dataset.dim_img_lat, dataset.dim_m, dataset.dim_u)
-	optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+	optimizer = torch.optim.Adam(model.parameters(), lr=0.001) # SGD for MLP, RMS-prop
 
 	epochs = 50
 	lat_file = os.path.join(dataset.dir, 'lat.pkl')
@@ -333,13 +333,13 @@ if __name__ == '__main__':
 	# config dataset path
 	# ds_dir = '/home/ruihan/scenario_runner/data/' # used to generate E2C_model_basic, image + c
 	# ds_dir = '/home/ruihan/scenario_runner/data_mini/' # used to try dynamics model, image + ctv
-	ds_dir = '/home/ruihan/scenario_runner/data_ctv_rgb/'
+	ds_dir = '/home/ruihan/scenario_runner/data_ctv_logdepth_norm/'
 
 	# config model path
 	# model_path = 'models/E2C/E2C_model_basic.pth'
 	# model_path = 'models/E2C/E2C_model_try.pth'
-	model_path = 'models/E2C/E2C_model_ctv_for_cat.pth'
-	# train(model_path, ds_dir)
+	model_path = 'models/E2C/data_ctv_logdepth_norm.pth'
+	train(model_path, ds_dir)
 	test(model_path, ds_dir)
 
 	# train_dynamics()

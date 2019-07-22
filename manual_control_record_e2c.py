@@ -88,6 +88,7 @@ except ImportError:
     raise RuntimeError('cannot import numpy, make sure numpy package is installed')
 
 import csv
+import random
 
 
 
@@ -100,6 +101,8 @@ def find_weather_presets():
     rgx = re.compile('.+?(?:(?<=[a-z])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])|$)')
     name = lambda x: ' '.join(m.group(0) for m in rgx.finditer(x))
     presets = [x for x in dir(carla.WeatherParameters) if re.match('[A-Z].+', x)]
+    # print("preset weathers", presets)
+    # ['ClearNoon', 'ClearSunset', 'CloudyNoon', 'CloudySunset', 'Default', 'HardRainNoon', 'HardRainSunset', 'MidRainSunset', 'MidRainyNoon', 'SoftRainNoon', 'SoftRainSunset', 'WetCloudyNoon', 'WetCloudySunset', 'WetNoon', 'WetSunset']
     return [(getattr(carla.WeatherParameters, x), name(x)) for x in presets]
 
 
@@ -127,7 +130,8 @@ class World(object):
         self.collision_sensor = CollisionSensor(self.vehicle, self.hud)
         self.lane_invasion_sensor = LaneInvasionSensor(self.vehicle, self.hud)
         self.camera_manager = CameraManager(self.vehicle, self.hud)
-        self.camera_manager.set_sensor(0, notify=False)
+        # RH: the following line determines what kind of camera the vehicle is using
+        self.camera_manager.set_sensor(3, notify=False) # 0 for rgb raw data, 3 for depth camera
         self.controller = None
         self._weather_presets = find_weather_presets()
         self._weather_index = 0
@@ -640,20 +644,31 @@ class CameraManager(object):
 
     def save_ctv_for_e2c(self, frame_number, control, transform, velocity, save_dir):
         path = save_dir+'{:08d}_ctv'.format(frame_number) # keep consistent with image.save_to_disk
-        print("path for npy", path)
         loc = transform.location
         rot = transform.rotation
         x = np.array([control.throttle, control.steer, control.brake, \
                       loc.x, loc.y, loc.z, rot.yaw, rot.pitch, rot.roll, \
                       velocity.x, velocity.y, velocity.z])
-        print("ctv in array", x)
+        # print("ctv in array", x)
         np.save(path, x)
+
+    def save_normalized_ctv(self, frame_number, control, loc_diff, velocity, save_dir, max_loc_diff = 30, max_vel = 90.0):
+        path = save_dir+'{:08d}_ctv'.format(frame_number) # keep consistent with image.save_to_disk
+        
+        x = np.array([control.throttle, control.steer, control.brake, \
+                      norm(loc_diff.x, max_loc_diff), norm(loc_diff.y, max_loc_diff), norm(loc_diff.z, max_loc_diff), \
+                      norm(velocity.x, max_vel), norm(velocity.y, max_vel), norm(velocity.z, max_vel)])
+
+        # print("nomalized ctv", x)
+        np.save(path, x)
+        
 
     def _parse_image_and_save(self, image):
         # parse the image as above
         # Note: convert, save_to_disk methods are from carla.Image class 
         # see https://carla.readthedocs.io/en/latest/python_api/#carlaimagecarlasensordata-class
-        save_dir = 'data_ctv_rgb/'
+        save_dir = 'data_ctv_logdepth_norm/'
+        sampling_radius = 90.0*1/3.6 # max_dist that the vehicle can reach in the next second
         weak_self = weakref.ref(self)
         self._parse_image(weak_self, image, save_dir)
         # save control in another file with same frame number so that it's easier to read data
@@ -662,9 +677,26 @@ class CameraManager(object):
         transform = self._parent.get_transform()
         velocity = self._parent.get_velocity()
 
+        map = self._parent.get_world().get_map()
+        waypoint = random.choice(map.get_waypoint(transform.location).next(sampling_radius))
+
+        loc_diff = transform.location - waypoint.transform.location
+        print("loc_diff {}".format(loc_diff))
+        # rot_diff = transform.rotation - wp_tf.rotation # TypeError: unsupported operand type(s) for -: 'Rotation' and 'Rotation'
+
         # self.save_control_for_e2c(frame_number, control, save_dir)
-        self.save_ctv_for_e2c(frame_number, control, transform, velocity, save_dir)
+        # self.save_ctv_for_e2c(frame_number, control, transform, velocity, save_dir)
+        self.save_normalized_ctv(frame_number, control, loc_diff, velocity, save_dir)
         
+
+def norm(x, x_max):
+    n = x/(x_max*2) + 0.5
+    if n>0 and n< 1:
+        return n
+    else:
+        raise ValueError("abnormal norm x {}, x_max {}, norm {}".format(x, x_max, n))
+
+
 # ==============================================================================
 # -- game_loop() ---------------------------------------------------------------
 # ==============================================================================

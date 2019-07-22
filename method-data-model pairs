@@ -1,0 +1,5 @@
+data-model pairs
+
+	
+* dta_ctv_logdepth	E2c_model_ctv_for_cat_logdepth
+* data_ctv_rgb 	E2c_model_ctv_for_cat_rgb

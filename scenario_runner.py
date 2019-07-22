@@ -288,6 +288,7 @@ class ScenarioRunner(object):
                 print("Configuration for scenario {} cannot be found!".format(args.scenario))
                 continue
 
+            print("scenario_config_file is ", scenario_config_file) # srunner/configs/*.xml
             scenario_configurations = parse_scenario_configuration(scenario_config_file, args.scenario)
 
             # Execute each configuration

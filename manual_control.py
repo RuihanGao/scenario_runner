@@ -160,6 +160,7 @@ class World(object):
             return False
 
         self.hud.tick(self, self.mapname, clock)
+        print("speed_limits {}".format(self.vehicle.get_speed_limit()))
         return True
 
     def render(self, display):
