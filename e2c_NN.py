@@ -26,7 +26,6 @@ class ZUData(Dataset):
 		return self.z[index], self.u[index]
 
 
-
 class MLP_e2c(nn.Module):
 	def __init__(self, nx=10, ny=3):
 		'''
@@ -42,6 +41,8 @@ class MLP_e2c(nn.Module):
 			nn.ReLU(),
 			nn.Linear(100, ny)
 		)
+		self.sig = nn.Sigmoid()
+		self.tanh = nn.Tanh()
 
 	def forward(self, x):
 		# convert tensor (128, 1, 28, 28) --> (128, 1*28*28) for MNIST image
@@ -49,7 +50,15 @@ class MLP_e2c(nn.Module):
 		x = x.view(x.size(0), -1)
 		# print("in forward", x.size())
 		x = self.layers(x)
-		return x
+		# TODO: Use sigmoid, tanh, sigmoid on throttle, steer, brake, respectively
+		# t, s, b = torch.split(x, (1, 1, 1), dim=1)
+		throttle = self.sig(x[:, 0]).view(x.shape[0],-1)
+		steer = self.tanh(x[:, 1]).view(x.shape[0],-1)
+		brake = self.sig(x[:, 2]).view(x.shape[0],-1)
+
+		# print("tsb", throttle.size(), steer.size(), brake.size())
+
+		return torch.cat([throttle, steer, brake], dim=1)
 
 
 if __name__ == '__main__':

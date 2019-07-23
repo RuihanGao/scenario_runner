@@ -162,7 +162,7 @@ class World(object):
 		print("world.e2c_model")
 		print(self.e2c_model)
 		self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-
+		print("init None tensor")
 		self.m_tensor = None
 		self.img_tensor = None
 
@@ -267,8 +267,6 @@ class KeyboardControl(object):
 					world.camera_manager.toggle_return()
 					self._e2c_controller_enabled = world.camera_manager._return
 
-
-				
 		if not self._autopilot_enabled:
 			if self._nn_controller_enabled:
 				self.get_nn_controller(world)
@@ -277,7 +275,10 @@ class KeyboardControl(object):
 				self.get_e2c_controller(world)
 			else:
 				self._parse_keys(pygame.key.get_pressed(), clock.get_time())
+			print("apply control", self._control)
 			world.vehicle.apply_control(self._control)
+			location = world.vehicle.get_transform().location
+			print("location", location)
 
 				
 		# record_dataset(world)
@@ -319,7 +320,11 @@ class KeyboardControl(object):
 
 	def get_e2c_controller(self, world):
 		print("get_e2c_controller")
-		if world.img_tensor is None or world.m_tensor is None:
+		# print("world.vehicle", world.vehicle)
+		# my_world = world.vehicle.get_world()
+		my_world = world.camera_manager
+		# print("my_world", my_world)
+		if my_world.img_tensor is None or my_world.m_tensor is None:
 			# no available data, no-op
 			print("no op")
 			self._control.throttle = 0
@@ -328,19 +333,19 @@ class KeyboardControl(object):
 		else:
 			print("load e2c")
 			e2c = world.e2c_model
-			z = e2c.latent_embeddings(world.img_tensor, world.m_tensor)
-			print("latent z")
-			print(z.size(), z)
-			u = world.nn_model(z)
-			print("u")
-			print(u.size(), u)
+			z = e2c.latent_embeddings(my_world.img_tensor, my_world.m_tensor)
+			# print("latent z") # torch.Size([1, 106]) 
 
+			u = world.nn_model(z)
 			# convert tensor to numpy array
 			u = u.data.cpu().numpy()[0]
+			# print("u ", u)
+			# print(type(u[0])) # <class 'numpy.float32'>
+			# print(type(u[0].item())) # <class 'float'>
 			
-			self._control.throttle = u[0]
-			self._control.steer = u[1]
-			self._control.brake = u[2]	
+			self._control.throttle = u[0].item() # max(min(u[0].item(),1.0), 0)
+			self._control.steer = u[1].item() # max(min(u[1].item(),1.0), -1.0)
+			self._control.brake = 0 # max(min(u[2].item(), 1.0), 0)
 
 
 	@staticmethod
@@ -663,6 +668,9 @@ class CameraManager(object):
 			item.append(bp)
 		self._index = None
 
+		self.m_tensor = None
+		self.img_tensor = None
+
 	def toggle_return(self):
 		self._return = not self._return
 
@@ -760,7 +768,6 @@ class CameraManager(object):
 			# print("m array", m) # e.g. [0.48041382 0.94163796 0.49981057 0.5        0.5        0.5       ]
 			m =  torch.from_numpy(m.astype(np.float32))
 			m = m.view(1, -1)
-			print("m", m.size())
 
 			print("parse image")
 			weak_self = weakref.ref(self)
@@ -768,12 +775,17 @@ class CameraManager(object):
 			# print("return from parse image") # nd.array (88, 200)
 			image = torch.from_numpy(image.astype(np.float32))
 			image = image.view(1, -1)
-			print("img", image.size())	
+			# print("img", image.size())	
 			# TODO save image and m for control
-			tensor.new_tensor(data)
-			world.m_tensor = tensor.new_tensor
-			world.img_tensor = image
-
+			
+			# # print("pass m")
+			# print("parent of CameraManager", self._parent)
+			# print("world in _parse_image_and_measurement", world)
+			self.m_tensor = m
+			# print("world m", world.m_tensor)
+			# print("pass image")
+			self.img_tensor = image
+			# print("world img", world.img_tensor)
 
 def norm(x, x_max):
 	n = x/(x_max*2) + 0.5
