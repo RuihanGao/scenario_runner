@@ -138,7 +138,7 @@ class CarlaData(Dataset):
 		self.dim_img_lat = 100 # TODO: customize
 		self.dim_m = 6 # 9 for transform (6), velocity(9)
 		self.dim_u = 3
-		# self.dim_z = self.dim_img_lat + self.dim_m  # done in E2C_cat __init__
+		self.dim_z = self.dim_img_lat + self.dim_m  # done in E2C_cat __init__
 		self._process()
 
 	def __len__(self):
@@ -171,6 +171,7 @@ class CarlaData(Dataset):
 			imgs = sorted(glob(os.path.join(self.dir,"*.png"))) # sorted by frame numbers
 			# shuffle(imgs) # if need randomness
 			frame_numbers = [img.split('/')[-1].split('.')[0] for img in imgs]
+			print("{} frames".format(len(frame_numbers)))
 			processed = []
 			for frame_number in frame_numbers[:-1]: # ignore the last frame which does not have next frame
 				next_frame_number = "{:08d}".format(int(frame_number)+1)
@@ -179,7 +180,7 @@ class CarlaData(Dataset):
 				img_next_dir = os.path.join(self.dir, next_frame_number+'.png')
 				if not os.path.exists(img_next_dir):
 					# change climate will jump frame number
-					break
+					continue
 				img_next = Image.open(img_next_dir)
 				# load ctv array, ctv: control transform, velocity <=> u: action, m: measurement
 				ctv = np.load(os.path.join(self.dir, frame_number+'_ctv.npy'))
@@ -191,7 +192,8 @@ class CarlaData(Dataset):
 				processed.append([self._process_img(img, self.img_width, self.img_height), 
 								  m, u, 
 								  self._process_img(img_next, self.img_width, self.img_height),
-								  m_next])                   
+								  m_next])
+				# print("frame_number ", frame_number)                
 
 			with open(preprocessed_file, 'wb') as f:
 				pickle.dump(processed, f)
@@ -239,8 +241,8 @@ def train(model_path, ds_dir):
 	optimizer = torch.optim.Adam(model.parameters(), lr=0.001) # SGD for MLP, RMS-prop
 
 	epochs = 50
-	lat_file = os.path.join(dataset.dir, 'lat.pkl')
-	ztv_file = os.path.join(dataset.dir, 'ztv_trans.pkl')
+	# lat_file = os.path.join(dataset.dir, 'lat.pkl')
+	# ztv_file = os.path.join(dataset.dir, 'ztv_trans.pkl')
 
 	for epoch in range(epochs):
 		model.train()
@@ -272,7 +274,6 @@ def train(model_path, ds_dir):
 	torch.save(model, model_path)
 
 def test(model_path, ds_dir):
-	dataset = CarlaData(ds_dir=ds_dir)
 	# test the model and check the image output
 
 	model = torch.load(model_path)

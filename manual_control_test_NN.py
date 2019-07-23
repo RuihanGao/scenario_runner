@@ -115,7 +115,7 @@ def get_actor_display_name(actor, truncate=250):
 
 class World(object):
     # 'models/NN_model_relative_epo50.pth'
-    def __init__(self, carla_world, hud, nn_model_path='models/NN_model_epo50.pth'):
+    def __init__(self, carla_world, hud, nn_model_path='models/MLP/data_ctv_logdepth_norm.pth'):
         self.world = carla_world
         self.mapname = carla_world.get_map().name
         self.hud = hud
@@ -133,7 +133,7 @@ class World(object):
         self.collision_sensor = CollisionSensor(self.vehicle, self.hud)
         self.lane_invasion_sensor = LaneInvasionSensor(self.vehicle, self.hud)
         self.camera_manager = CameraManager(self.vehicle, self.hud)
-        self.camera_manager.set_sensor(0, notify=False)
+        self.camera_manager.set_sensor(3, notify=False)
         self.controller = None
         self._weather_presets = find_weather_presets()
         self._weather_index = 0
@@ -141,7 +141,6 @@ class World(object):
         self.nn_model = torch.load(nn_model_path)
         self.nn_model.eval()
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-
 
     def restart(self):
         cam_index = self.camera_manager._index
@@ -239,6 +238,7 @@ class KeyboardControl(object):
                 elif event.key == K_n:
                     # toggle NN controller
                     self._nn_controller_enabled = not self._nn_controller_enabled
+                
         if not self._autopilot_enabled:
             if self._nn_controller_enabled:
                 self.get_nn_controller(world)
@@ -284,6 +284,7 @@ class KeyboardControl(object):
         print("control from nn_controller", control)
         self._control.throttle = control[0]
         self._control.steer = control[1]
+
 
     @staticmethod
     def _is_quit_shortcut(key):
@@ -621,8 +622,9 @@ class CameraManager(object):
                 attach_to=self._parent)
             # We need to pass the lambda a weak reference to self to avoid
             # circular reference.
-            weak_self = weakref.ref(self)
-            self.sensor.listen(lambda image: CameraManager._parse_image(weak_self, image))
+            
+            # self.sensor.listen(lambda image: CameraManager._parse_image(weak_self, image))
+            self.sensor.listen(lambda image: CameraManager._parse_image(self, image))
         if notify:
             self._hud.notification(self._sensors[index][2])
         self._index = index
@@ -639,8 +641,24 @@ class CameraManager(object):
             display.blit(self._surface, (0, 0))
 
     @staticmethod
-    def _parse_image(weak_self, image):
-        self = weak_self()
+    def _parse_image(self, image,  max_loc_diff = 30, max_vel = 90.0):
+        # parse measurement
+        print("parse measurement")
+        sampling_radius = 90.0*1/3.6
+        transform = self._parent.get_transform()
+        velocity = self._parent.get_velocity()
+        world = self._parent.get_world()
+        model = world.nn_model
+        waypoint = random.choice(world.get_map().get_waypoint(transform.location).next(sampling_radius))
+        loc_diff = transform.location - waypoint.transform.location
+
+        m = np.array([norm(loc_diff.x, max_loc_diff), norm(loc_diff.y, max_loc_diff), norm(loc_diff.z, max_loc_diff), \
+                      norm(velocity.x, max_vel), norm(velocity.y, max_vel), norm(velocity.z, max_vel)])
+        m =  torch.from_numpy(m.float())
+        m = m.view(1, -1)
+
+        # get image (orginial code)
+        self = weakref.ref(self)
         if not self:
             return
         if self._sensors[self._index][0].startswith('sensor.lidar'):
@@ -665,6 +683,42 @@ class CameraManager(object):
             self._surface = pygame.surfarray.make_surface(array.swapaxes(0, 1))
         if self._recording:
             image.save_to_disk('_out/%08d' % image.frame_number)
+
+        # RH
+        print("parse image")
+        image = ToTensor()((img.convert('L').
+                    resize((200, 88))))
+        image = image.view(1, -1)
+
+        # TODO need to load two models, nn and e2c for latent_embeddings
+
+        states = np.hstack((norm(loc_diff.x, max_loc_diff), norm(loc_diff.y, max_loc_diff), norm(loc_diff.z, max_loc_diff), \
+                norm(velocity.x, max_vel), norm(velocity.y, max_vel), norm(velocity.z, max_vel)))
+        states = np.hstack((image, states))
+        # expand vector to 2D array
+        states = np.expand_dims(states, axis=0)
+        states = torch.from_numpy(states).double() #.to(world.device)
+        print("states", states.size(), states)
+
+        control = model(states) #RuntimeError: size mismatch, m1: [10 x 1], m2: [10 x 100] at /pytorch/aten/src/TH/generic/THTensorMath.cpp:961
+        control = control.data.cpu().numpy()[0]
+
+        self._control.throttle = control[0]
+        self._control.steer = control[1]
+        self._control.brake = control[2]
+
+        world.vehicle.apply_control(self._control)
+        
+
+
+
+
+ def norm(x, x_max):
+    n = x/(x_max*2) + 0.5
+    if n>0 and n< 1:
+        return n
+    else:
+        raise ValueError("abnormal norm x {}, x_max {}, norm {}".format(x, x_max, n)) 
 
 
 # ==============================================================================

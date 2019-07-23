@@ -3,7 +3,7 @@ import torch
 import torch.nn as nn
 from torch.autograd import Variable
 
-from e2c_controller_cat import NormalDistribution
+# from e2c_controller_cat import NormalDistribution
 
 torch.set_default_dtype(torch.float32)
 
@@ -11,6 +11,35 @@ torch.set_default_dtype(torch.float32)
 modify e2c to concatenate img and m, 
 which are taken care of in Encoder_cat, Decoder_cat
 '''
+
+# copy from e2c_controller_cat
+class NormalDistribution(object):
+	"""
+	Wrapper class representing a multivariate normal distribution parameterized by
+	N(mu,Cov). If cov. matrix is diagonal, Cov=(sigma).^2. Otherwise,
+	Cov=A*(sigma).^2*A', where A = (I+v*r^T).
+	"""
+
+	def __init__(self, mu, sigma, logsigma, *, v=None, r=None):
+		self.mu = mu
+		self.sigma = sigma
+		self.logsigma = logsigma
+		self.v = v
+		self.r = r
+
+	@property
+	def cov(self):
+		"""This should only be called when NormalDistribution represents one sample"""
+		if self.v is not None and self.r is not None:
+			assert self.v.dim() == 1
+			dim = self.v.dim()
+			v = self.v.unsqueeze(1)  # D * 1 vector
+			rt = self.r.unsqueeze(0)  # 1 * D vector
+			A = torch.eye(dim) + v.mm(rt)
+			return A.mm(torch.diag(self.sigma.pow(2)).mm(A.t()))
+		else:
+			return torch.diag(self.sigma.pow(2))
+
 
 class Encoder_cat(nn.Module):
 	def __init__(self, dim_in, dim_out, dim_m):
