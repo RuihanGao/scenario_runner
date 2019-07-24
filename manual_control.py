@@ -124,7 +124,7 @@ class World(object):
         self.collision_sensor = CollisionSensor(self.vehicle, self.hud)
         self.lane_invasion_sensor = LaneInvasionSensor(self.vehicle, self.hud)
         self.camera_manager = CameraManager(self.vehicle, self.hud)
-        self.camera_manager.set_sensor(0, notify=False)
+        self.camera_manager.set_sensor(3, notify=False) # choose the camera
         self.controller = None
         self._weather_presets = find_weather_presets()
         self._weather_index = 0
@@ -584,6 +584,8 @@ class CameraManager(object):
             self._surface = pygame.surfarray.make_surface(lidar_img)
         else:
             image.convert(self._sensors[self._index][1])
+            # RH check timestamp 
+            print("img timestamp", image.timestamp)
             array = np.frombuffer(image.raw_data, dtype=np.dtype("uint8"))
             array = np.reshape(array, (image.height, image.width, 4))
             array = array[:, :, :3]

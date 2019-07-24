@@ -164,9 +164,10 @@ class CarlaData(Dataset):
 		return torch.from_numpy(ctv[:3]).float(), torch.from_numpy(ctv[3:]).float()
 
 	def _process(self):
-		preprocessed_file = os.path.join(self.dir, 'processed.pkl')
+		frame_interval = 5 # 1
+		preprocessed_file = os.path.join(self.dir, 'processed_{}.pkl'.format(str(frame_interval)))
 		if not os.path.exists(preprocessed_file):
-			print("writing processed.pkl")
+			print("writing {}".format(preprocessed_file))
 			# create data and dump
 			imgs = sorted(glob(os.path.join(self.dir,"*.png"))) # sorted by frame numbers
 			# shuffle(imgs) # if need randomness
@@ -174,7 +175,7 @@ class CarlaData(Dataset):
 			print("{} frames".format(len(frame_numbers)))
 			processed = []
 			for frame_number in frame_numbers[:-1]: # ignore the last frame which does not have next frame
-				next_frame_number = "{:08d}".format(int(frame_number)+1)
+				next_frame_number = "{:08d}".format(int(frame_number)+frame_interval)
 				# load images
 				img = Image.open(os.path.join(self.dir, frame_number+'.png'))
 				img_next_dir = os.path.join(self.dir, next_frame_number+'.png')
@@ -201,6 +202,7 @@ class CarlaData(Dataset):
 		else:
 			# directly load the pickle file
 			with open(preprocessed_file, 'rb') as f:
+				print("directly load pickle file {}".format(preprocessed_file))
 				self._processed = pickle.load(f)
 		shuffle(self._processed)
 
@@ -339,8 +341,8 @@ if __name__ == '__main__':
 	# config model path
 	# model_path = 'models/E2C/E2C_model_basic.pth'
 	# model_path = 'models/E2C/E2C_model_try.pth'
-	model_path = 'models/E2C/data_ctv_logdepth_norm.pth'
-	train(model_path, ds_dir)
+	model_path = 'models/E2C/E2C_model_ctv_logdepth_norm_5.pth' # change the name if frame_interval is modified
+	# train(model_path, ds_dir)
 	test(model_path, ds_dir)
 
 	# train_dynamics()

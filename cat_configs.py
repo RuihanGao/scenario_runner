@@ -6,6 +6,7 @@ from torch.autograd import Variable
 # from e2c_controller_cat import NormalDistribution
 
 torch.set_default_dtype(torch.float32)
+# torch.set_default_tensor_type('torch.cuda.FloatTensor')
 
 '''
 modify e2c to concatenate img and m, 

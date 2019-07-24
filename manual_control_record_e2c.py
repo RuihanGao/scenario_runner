@@ -129,7 +129,7 @@ class World(object):
         self.vehicle_name = self.vehicle.type_id
         self.collision_sensor = CollisionSensor(self.vehicle, self.hud)
         self.lane_invasion_sensor = LaneInvasionSensor(self.vehicle, self.hud)
-        self.camera_manager = CameraManager(self.vehicle, self.hud)
+        self.camera_manager = CameraManager(self.vehicle, self.hud) # depth camera is 20Hz
         # RH: the following line determines what kind of camera the vehicle is using
         self.camera_manager.set_sensor(3, notify=False) # 0 for rgb raw data, 3 for depth camera
         self.controller = None

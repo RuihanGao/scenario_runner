@@ -105,7 +105,7 @@ from torch.utils.data import Dataset, DataLoader
 from torchvision.transforms import ToTensor
 
 from cat_configs import E2C_cat
-from e2c_NN import MLP_e2c
+from e2c_NN import MLP_e2c, FC_coil
 
 
 
@@ -129,8 +129,8 @@ def get_actor_display_name(actor, truncate=250):
 class World(object):
 	# 'models/NN_model_relative_epo50.pth'
 	def __init__(self, carla_world, hud, \
-				 nn_model_path='models/MLP/data_ctv_logdepth_norm.pth', \
-				 e2c_model_path='models/E2C/data_ctv_logdepth_norm.pth'):
+				 nn_model_path='models/MLP/MLP_model_ctv_logdepth_norm_5_WSE_Adam.pth', \
+				 e2c_model_path='models/E2C/E2C_model_ctv_logdepth_norm_5.pth'):
 		self.world = carla_world
 		self.mapname = carla_world.get_map().name
 		self.hud = hud
@@ -272,14 +272,24 @@ class KeyboardControl(object):
 				self.get_nn_controller(world)
 				self._parse_keys_other(pygame.key.get_pressed(), clock.get_time())
 			elif self._e2c_controller_enabled:
-				self.get_e2c_controller(world)
+				t, s, b = self.get_e2c_controller(world)
+				print("t, s, b")
+				print(type(t), t, type(s), s, type(b), b)
+				self._control.hand_brake = False
+				self._control.throttle = float(t) #+0.00000000001 # float(t) # u[0].item()
+				self._control.steer = float(s) # float(s) # u[1].item()*2-1 # remap from [0,1] to [-1, 1]
+				self._control.brake = 0 # float(b) 
 			else:
 				self._parse_keys(pygame.key.get_pressed(), clock.get_time())
+			
+			
+			# print("before constant control", self._control)
+
+
 			print("apply control", self._control)
 			world.vehicle.apply_control(self._control)
-			location = world.vehicle.get_transform().location
-			print("location", location)
-
+			# location = world.vehicle.get_transform().location
+			print("location", world.vehicle.get_transform())
 				
 		# record_dataset(world)
 
@@ -319,7 +329,7 @@ class KeyboardControl(object):
 		self._control.steer = control[1]
 
 	def get_e2c_controller(self, world):
-		print("get_e2c_controller")
+		# print("get_e2c_controller")
 		# print("world.vehicle", world.vehicle)
 		# my_world = world.vehicle.get_world()
 		my_world = world.camera_manager
@@ -330,8 +340,9 @@ class KeyboardControl(object):
 			self._control.throttle = 0
 			self._control.steer = 0
 			self._control.brake = 0
+			return 0, 0, 0
 		else:
-			print("load e2c")
+			# print("load e2c")
 			e2c = world.e2c_model
 			z = e2c.latent_embeddings(my_world.img_tensor, my_world.m_tensor)
 			# print("latent z") # torch.Size([1, 106]) 
@@ -339,15 +350,19 @@ class KeyboardControl(object):
 			u = world.nn_model(z)
 			# convert tensor to numpy array
 			u = u.data.cpu().numpy()[0]
-			# print("u ", u)
+			print("u ", u)
+
+			print("type u", type(u))
 			# print(type(u[0])) # <class 'numpy.float32'>
 			# print(type(u[0].item())) # <class 'float'>
 			
-			self._control.throttle = u[0].item() # max(min(u[0].item(),1.0), 0)
-			self._control.steer = u[1].item() # max(min(u[1].item(),1.0), -1.0)
-			self._control.brake = 0 # max(min(u[2].item(), 1.0), 0)
+			# self._control.hand_brake = False
+			# self._control.throttle = 0.99 * float(u[0]) # .item()
+			# self._control.steer = 0.99 * (-1+2*float(u[1])) # remap from [0,1] to [-1, 1]
+			# self._control.brake = 0.99 * float(u[2])# .item() # max(min(u[2].item(), 1.0), 0)
 
-
+		return 0.99 * float(u[0]), 0.99 * (-1+2*float(u[1])), 0.99 * float(u[2])
+	
 	@staticmethod
 	def _is_quit_shortcut(key):
 		return (key == K_ESCAPE) or (key == K_q and pygame.key.get_mods() & KMOD_CTRL)
@@ -754,7 +769,7 @@ class CameraManager(object):
 			# use nn and e2c models
 
 			# parse measurement
-			print("parse measurement")
+			# print("parse measurement")
 			sampling_radius = 90.0*1/3.6
 			transform = self._parent.get_transform()
 			velocity = self._parent.get_velocity()
@@ -769,7 +784,7 @@ class CameraManager(object):
 			m =  torch.from_numpy(m.astype(np.float32))
 			m = m.view(1, -1)
 
-			print("parse image")
+			# print("parse image")
 			weak_self = weakref.ref(self)
 			image = self._parse_image(weak_self, image)
 			# print("return from parse image") # nd.array (88, 200)
