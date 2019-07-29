@@ -79,6 +79,9 @@ try:
     from pygame.locals import K_r
     from pygame.locals import K_s
     from pygame.locals import K_w
+    from pygame.locals import K_z
+
+    # use z to change starting point and reset the location of the vehicle
 except ImportError:
     raise RuntimeError('cannot import pygame, make sure pygame package is installed')
 
@@ -121,11 +124,6 @@ class World(object):
                 if vehicle.attributes['role_name'] == "hero":
                     self.vehicle = vehicle
         self.vehicle_name = self.vehicle.type_id
-
-        # RH: try to set initial velocity for autopilot
-        init_vel = carla.Vector3D(20, 40, 0)
-        self.vehicle.set_velocity(init_vel)
-
         self.collision_sensor = CollisionSensor(self.vehicle, self.hud)
         self.lane_invasion_sensor = LaneInvasionSensor(self.vehicle, self.hud)
         self.camera_manager = CameraManager(self.vehicle, self.hud)
@@ -200,11 +198,12 @@ class World(object):
 
 
 class KeyboardControl(object):
-    def __init__(self, world, start_in_autopilot):
+    def __init__(self, world, start_in_autopilot, client=None):
         start_in_autopilot = True
         self._autopilot_enabled = start_in_autopilot
         self._control = carla.VehicleControl()
         self._steer_cache = 0.0
+        self.client = client
         world.vehicle.set_autopilot(self._autopilot_enabled)
         world.hud.notification("Press 'H' or '?' for help.", seconds=4.0)
 
@@ -239,9 +238,49 @@ class KeyboardControl(object):
                     self._autopilot_enabled = not self._autopilot_enabled
                     world.vehicle.set_autopilot(self._autopilot_enabled)
                     world.hud.notification('Autopilot %s' % ('On' if self._autopilot_enabled else 'Off'))
+                elif event.key ==K_z:
+                    self.reset_vehicle(world)
         if not self._autopilot_enabled:
             self._parse_keys(pygame.key.get_pressed(), clock.get_time())
             world.vehicle.apply_control(self._control)
+        frame = world.hud.frame_number
+        print(frame, world.vehicle.get_transform())
+        print(frame, world.vehicle.get_velocity())
+
+    def reset_vehicle(self, world):
+        """
+        find a fix ref point and reset the vehicle around there
+        see if the autopilot can help it restore to normal lane
+        """
+        batch = []
+
+        ApplyVelocity = carla.command.ApplyVelocity
+        ApplyTransform = carla.command.ApplyTransform
+        ApplyVehicleCOntrol = carla.command.ApplyVehicleControl
+
+        center = carla.Location(x=404.1000061035156, y=-16.0, z=1.0)
+        radius = 1.8
+        wp = world.world.get_map().get_waypoint(center)
+        center = wp.transform.location
+        if radius < wp.lane_width/2.0:
+            raise ValueError("radius < wp.lane_width/2")
+        x = center.x + radius*(2*random.random()-1.0)
+        y = center.y + radius*(2*random.random()-1.0)
+        yaw = wp.transform.rotation.yaw + 30*(2*random.random()-1.0)
+        # print("restore from {} to {}".format(yaw, wp.transform.rotation.yaw))
+        x0 = carla.Transform(location=carla.Location(x=x, y=y), rotation=carla.Rotation(yaw=yaw))
+        v0 = carla.Vector3D(x=0, y=0, z=0)
+
+        batch.append(ApplyTransform(world.vehicle.id, x0))
+        batch.append(ApplyVelocity(world.vehicle.id, v0))
+        for response in self.client.apply_batch_sync(batch):
+            if response.error:
+                logging.error(response.error)
+        # world.vehicle.set_transform(x0)
+        print("frame {} set to ".format(world.hud.frame_number), x0)
+        # # RH: try to set initial velocity for autopilot
+        # init_vel = carla.Vector3D(20, 40, 0)
+        # self.vehicle.set_velocity(init_vel)
 
     def _parse_keys(self, keys, milliseconds):
         self._control.throttle = 1.0 if keys[K_UP] or keys[K_w] else 0.0
@@ -260,6 +299,8 @@ class KeyboardControl(object):
     @staticmethod
     def _is_quit_shortcut(key):
         return (key == K_ESCAPE) or (key == K_q and pygame.key.get_mods() & KMOD_CTRL)
+
+
 
 
 # ==============================================================================
@@ -626,13 +667,16 @@ def game_loop(args):
         client = carla.Client(args.host, args.port)
         client.set_timeout(2.0)
 
+        settings = CarlaSettings()
+        settings.set(SynchronousMode=True)
+
         display = pygame.display.set_mode(
             (args.width, args.height),
             pygame.HWSURFACE | pygame.DOUBLEBUF)
 
         hud = HUD(args.width, args.height)
         world = World(client.get_world(), hud)
-        controller = KeyboardControl(world, args.autopilot)
+        controller = KeyboardControl(world, args.autopilot, client=client)
 
         clock = pygame.time.Clock()
         while True:

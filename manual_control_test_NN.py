@@ -129,7 +129,7 @@ def get_actor_display_name(actor, truncate=250):
 class World(object):
 	# 'models/NN_model_relative_epo50.pth'
 	def __init__(self, carla_world, hud, \
-				 nn_model_path='models/MLP/MLP_model_ctv_logdepth_norm_5_WSE_Adam.pth', \
+				 nn_model_path='models/MLP/MLP_model_ctv_logdepth_norm_catwp_50_5_WSE_Adam_monly_1000.pth', \
 				 e2c_model_path='models/E2C/E2C_model_ctv_logdepth_norm_5.pth'):
 		self.world = carla_world
 		self.mapname = carla_world.get_map().name
@@ -273,9 +273,10 @@ class KeyboardControl(object):
 				self._parse_keys_other(pygame.key.get_pressed(), clock.get_time())
 			elif self._e2c_controller_enabled:
 				t, s, b = self.get_e2c_controller(world)
-				print("t, s, b")
-				print(type(t), t, type(s), s, type(b), b)
+				# print("t, s, b")
+				# print(type(t), t, type(s), s, type(b), b)
 				self._control.hand_brake = False
+				# t = 1 if t>0.5 else 0
 				self._control.throttle = float(t) #+0.00000000001 # float(t) # u[0].item()
 				self._control.steer = float(s) # float(s) # u[1].item()*2-1 # remap from [0,1] to [-1, 1]
 				self._control.brake = 0 # float(b) 
@@ -286,10 +287,13 @@ class KeyboardControl(object):
 			# print("before constant control", self._control)
 
 
-			print("apply control", self._control)
+			# print("{} apply control".format(world.hud.frame_number), self._control)
 			world.vehicle.apply_control(self._control)
 			# location = world.vehicle.get_transform().location
-			print("location", world.vehicle.get_transform())
+			# print("{} location".format(world.hud.frame_number), world.vehicle.get_transform())
+		else:
+			# print autopilot control
+			# print("{} apply control".format(world.hud.frame_number), world.vehicle.get_control())
 				
 		# record_dataset(world)
 
@@ -315,6 +319,7 @@ class KeyboardControl(object):
 		model = world.nn_model
 		location = world.vehicle.get_transform().location
 		waypoint = world.world.get_map().get_waypoint(location)
+		draw_waypoint
 		tf = waypoint.transform
 		states = np.hstack((location.x, location.y, location.z, waypoint.lane_width, tf.location.x, tf.location.y, tf.location.z, \
 			tf.rotation.pitch, tf.rotation.yaw, tf.rotation.roll))
@@ -344,15 +349,17 @@ class KeyboardControl(object):
 		else:
 			# print("load e2c")
 			e2c = world.e2c_model
-			z = e2c.latent_embeddings(my_world.img_tensor, my_world.m_tensor)
-			# print("latent z") # torch.Size([1, 106]) 
+			# z = e2c.latent_embeddings(my_world.img_tensor, my_world.m_tensor)
+			z = my_world.m_tensor
 
+			# print("z", z.size()) # torch.Size([1, 106]) 
+			# print(z)
 			u = world.nn_model(z)
 			# convert tensor to numpy array
 			u = u.data.cpu().numpy()[0]
-			print("u ", u)
+			# print("u ", u)
 
-			print("type u", type(u))
+			# print("type u", type(u))
 			# print(type(u[0])) # <class 'numpy.float32'>
 			# print(type(u[0].item())) # <class 'float'>
 			
@@ -759,9 +766,9 @@ class CameraManager(object):
 		if self._return:
 			return np.dot(array, [0.2989, 0.5870, 0.1140])
 
-	def _parse_image_and_measurement(self, image, max_loc_diff = 30, max_vel = 90.0):
+	def _parse_image_and_measurement(self, image, max_loc_diff = 60, max_vel = 90.0):
 		if not self._return:
-			print("parse image only")
+			# print("parse image only")
 			weak_self = weakref.ref(self)
 			image = self._parse_image(weak_self, image)
 
@@ -775,11 +782,36 @@ class CameraManager(object):
 			velocity = self._parent.get_velocity()
 			world = self._parent.get_world()
 
-			waypoint = random.choice(world.get_map().get_waypoint(transform.location).next(sampling_radius))
-			loc_diff = transform.location - waypoint.transform.location
+			# use single waypoint
+			# waypoint = random.choice(map.get_waypoint(transform.location).next(sampling_radius))
+			# concatenate a series of waypoints
+			sub_sampling_radius = 1.0
+			num_wps = 50
+			w0 = world.get_map().get_waypoint(transform.location) 
+			wps = []
+			wps.append(w0)
+			for i in range(1,num_wps):
+				wps.append(wps[i-1].next(sub_sampling_radius)[0])
 
-			m = np.array([norm(loc_diff.x, max_loc_diff), norm(loc_diff.y, max_loc_diff), norm(loc_diff.z, max_loc_diff), \
-						  norm(velocity.x, max_vel), norm(velocity.y, max_vel), norm(velocity.z, max_vel)])
+			# print("concatenate waypoints", len(wps))
+			loc_diffs = []
+			for wp in wps:
+				loc_diffs.append(transform.location - wp.transform.location)
+
+			m = []
+			for loc_diff in loc_diffs:
+				# wp here is already relative
+				m = np.hstack((np.array(m), np.array([norm(loc_diff.x, max_loc_diff), norm(loc_diff.y, max_loc_diff), norm(loc_diff.z, max_loc_diff)])))
+
+			# yaw = math.atan2(velocity.y, velocity.x)
+			# speed = np.sqrt(norm(velocity.y, max_vel)**2 + norm(velocity.x, max_vel)**2 )
+			# print("yaw {}, speed {}".format(yaw, speed))
+			# m = np.hstack((m, np.array([yaw, norm(speed, max_vel)])))
+
+			m = np.hstack((m, np.array([norm(velocity.x, max_vel), norm(velocity.y, max_vel), norm(velocity.z, max_vel)])))
+
+			# m = np.array([norm(loc_diff.x, max_loc_diff), norm(loc_diff.y, max_loc_diff), norm(loc_diff.z, max_loc_diff), \
+			# 			  norm(velocity.x, max_vel), norm(velocity.y, max_vel), norm(velocity.z, max_vel)])
 			# print("m array", m) # e.g. [0.48041382 0.94163796 0.49981057 0.5        0.5        0.5       ]
 			m =  torch.from_numpy(m.astype(np.float32))
 			m = m.view(1, -1)
@@ -797,10 +829,10 @@ class CameraManager(object):
 			# print("parent of CameraManager", self._parent)
 			# print("world in _parse_image_and_measurement", world)
 			self.m_tensor = m
-			# print("world m", world.m_tensor)
+			# print("world m", self.m_tensor)
 			# print("pass image")
 			self.img_tensor = image
-			# print("world img", world.img_tensor)
+			# print("world img", self.img_tensor)
 
 def norm(x, x_max):
 	n = x/(x_max*2) + 0.5
@@ -834,7 +866,7 @@ def game_loop(args):
 
 		clock = pygame.time.Clock()
 		while True:
-			clock.tick_busy_loop(60)
+			clock.tick_busy_loop(60) # 60
 			if controller.parse_events(world, clock):
 				return
 			if not world.tick(clock):

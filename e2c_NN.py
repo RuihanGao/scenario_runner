@@ -1,5 +1,6 @@
 # %matplotlilb inline
 import numpy as np
+import math
 
 from sklearn.model_selection import train_test_split
 import torch
@@ -102,7 +103,7 @@ class FC_coil(nn.Module):
 
 def weighted_mse_loss(input,target):
     #alpha of 0.5 means half weight goes to first, remaining half split by remaining 15
-    weights = Variable(torch.Tensor([1, 10, 0.1])) # .cuda()  
+    weights = Variable(torch.Tensor([1000, 0.1])) # .cuda()   # change [1, 1000, 0.1] to [1000, 0.1]
     pct_var = (input-target)**2
     out = pct_var * weights.expand_as(target)
     loss = out.mean() 
@@ -111,10 +112,11 @@ def weighted_mse_loss(input,target):
 
 
 if __name__ == '__main__':
-	ds_dir = '/home/ruihan/scenario_runner/data_ctv_logdepth_norm/'
-	MLP_model_path = 'models/MLP/MLP_model_ctv_logdepth_norm_5_WSE_Adam.pth'
-	E2C_model_path = 'models/E2C//E2C_model_ctv_logdepth_norm_5.pth'
-	dataset = CarlaData(ds_dir=ds_dir)
+	num_wps = 50
+	ds_dir = '/home/ruihan/scenario_runner/data_ctv_logdepth_norm_catwp_{}/'.format(num_wps)
+	MLP_model_path = 'models/MLP/MLP_model_ctv_logdepth_norm_catwp_{}_5_WSE_Adam_monly_vy.pth'.format(num_wps)
+	# E2C_model_path = 'models/E2C/E2C_model_ctv_logdepth_norm_5.pth'
+	dataset = CarlaData(ds_dir=ds_dir, num_wps=num_wps)
 	img, m, u, img_next, m_next = dataset.query_data()
 	u = list(u)
 
@@ -126,34 +128,40 @@ if __name__ == '__main__':
 	print("img[0]", img[0].size())
 
 	# init models
-	e2c = torch.load(E2C_model_path)
-	e2c.eval()
+	# disable the image part for now
+	# e2c = torch.load(E2C_model_path)
+	# e2c.eval()
 	device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 	# model = MLP_e2c(dataset.dim_z, dataset.dim_u)
-	model = FC_coil(dataset.dim_z, dataset.dim_u)
+	# model = FC_coil(dataset.dim_z, dataset.dim_u)
+	model = FC_coil(dataset.dim_m-1, dataset.dim_u) # vx, vy, vz -> yaw, speed, so minus one
 
 	print("obtain latent_embeddings")
 	# TODO try to simplify using map method
 	z = []
 	for i in range(len(dataset)):
-		img_i = img[i].view(1, -1)
-		m_i = m[i].view(1, -1)
-		z_i = e2c.latent_embeddings(img_i, m_i)
-		z.append(z_i)
+		# img_i = img[i].view(1, -1)
+		m_i = m[i].view(1, -1).data.numpy()[0]
+		yaw = math.atan2(m_i[-2], m_i[-3])
+		speed = np.sqrt(m_i[-2]**2 + m_i[-3]**2 )
+		# z_i = e2c.latent_embeddings(img_i, m_i)
+		# z.append(z_i)
+		mt = np.hstack((m_i[:-3], np.array([yaw, speed]))).astype(np.float32)
+		z.append(torch.from_numpy(mt))
 
 	train_dataset = ZUData(z=z, u=u)
 	train_loader = DataLoader(dataset=train_dataset, batch_size=128, shuffle=True)
 	
 	optimizer = torch.optim.Adam(model.parameters(), lr=0.0002) # Adam, SGD for MLP, RMS-prop
-	# loss_fn = torch.nn.MSELoss() 
+	loss_fn = torch.nn.MSELoss() 
 	# print("move model to cuda")
 	# e2c.cuda()
 	# model.cuda()
 
 	# TODO: How to  utilize GPU for training and/or testing
 
-	epochs = 50
+	epochs = 500
 
 	print("iterate over epochs")
 	mean_train_losses = []
@@ -172,8 +180,10 @@ if __name__ == '__main__':
 			# if i%10 == 0:
 			# 	print(i, outputs.size(), u.size())
 			# loss = loss_fn(outputs, u)
-			# loss = -binary_crossentropy(u, outputs).sum(dim=1).mean()
-			loss = weighted_mse_loss(outputs, u)
+			loss = -binary_crossentropy(u, outputs).sum(dim=1).mean()
+			# loss1 = -binary_crossentropy(u[:, 0], outputs[:, 0]).sum().mean()
+			# loss2 = weighted_mse_loss(outputs[:, 1:], u[:, 1:])
+			# loss = loss1 + loss2
 			loss.backward(retain_graph=True)
 			optimizer.step()
 			

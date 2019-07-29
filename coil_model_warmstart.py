@@ -18,6 +18,22 @@ from coilutils import AttributeDict
 # modelB = TheModelBClass(*args, **kwargs)
 # modelB.load_state_dict(torch.load(PATH, map_location = device), strict=False)
 
+# # Sample load a pretrained model
+# load part of the pre trained model
+# save
+# torch.save(pre_model.state_dict(), PATH)
+
+# # load
+# pretrained_dict = torch.load(PATH)
+# model = TheModelClass(*args, **kwargs)
+# model_dict = model.state_dict()
+# # 1. filter out unnecessary keys
+# pretrained_dict = {k: v for k, v in pretrained_dict.items() if k in model_dict}
+# # 2. overwrite entries in the existing state dict
+# model_dict.update(pretrained_dict) 
+# # 3. load the new state dict
+# model.load_state_dict(model_dict)
+
 
 torch.set_default_dtype(torch.float32)
 torch.set_default_tensor_type('torch.cuda.FloatTensor')

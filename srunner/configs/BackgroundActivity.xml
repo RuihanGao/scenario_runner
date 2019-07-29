@@ -1126,6 +1126,6 @@
 			<waypoint  x="-396.6416015625" y="30.27157974243164" z="0.0" connection="RoadOption.LANEFOLLOW"/>
 			<waypoint  x="-394.6416320800781" y="30.25872039794922" z="0.0" connection="RoadOption.LANEFOLLOW"/>
 		</route>
-        <other_actor random_location="True" autopilot="True" model="vehicle.*" amount="50" />
+        <other_actor random_location="True" autopilot="True" model="vehicle.*" amount="0" />
 	</scenario>
 </scenarios>

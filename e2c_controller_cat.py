@@ -129,14 +129,14 @@ class CarlaData(Dataset):
 	retrieve data based on frame number: camera images (single central.png) & ctv info.npy
 	the img size can be customized, check sensor/hud setting of collected data
 	'''
-	def __init__(self, ds_dir, img_width = 200, img_height=88):
+	def __init__(self, ds_dir, img_width = 200, img_height=88, num_wps=0):
 		# find all available data
 		self.dir = ds_dir
 		self.img_width = img_width
 		self.img_height = img_height
 		self.dim_img = self.img_width*self.img_height # *3 for RGB channels
 		self.dim_img_lat = 100 # TODO: customize
-		self.dim_m = 6 # 9 for transform (6), velocity(9)
+		self.dim_m = num_wps*3 + 3 # for concatenate loc_diff and v (3) # 6 for loc_diff t(3), v(3) # 9 for transform (6), velocity(9)
 		self.dim_u = 3
 		self.dim_z = self.dim_img_lat + self.dim_m  # done in E2C_cat __init__
 		self._process()

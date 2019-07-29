@@ -510,6 +510,7 @@ class KeepVelocity(AtomicBehavior):
         self._actor = actor
         self._target_velocity = target_velocity
 
+        print("init KeepVelocity", actor)
         self._control, self._type = get_actor_control(actor)
         self._map = self._actor.get_world().get_map()
         self._waypoint = self._map.get_waypoint(self._actor.get_location())
@@ -560,6 +561,7 @@ class KeepVelocity(AtomicBehavior):
         On termination of this behavior, the throttle should be set back to 0.,
         to avoid further acceleration.
         """
+        print(type(self._control))
         self._control.throttle = 0.0
         if self._actor is not None and self._actor.is_alive:
             self._actor.apply_control(self._control)

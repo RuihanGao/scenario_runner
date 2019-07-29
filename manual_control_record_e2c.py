@@ -166,7 +166,13 @@ class World(object):
             print("Scenario ended -- Terminating")
             return False
 
+        # set all traffic lights to Green, it will still affect by one tick and not afterwards
+        traffic_light = self.vehicle.get_traffic_light()
+        if traffic_light is not None:
+            traffic_light.set_state(carla.TrafficLightState.Green)
+
         self.hud.tick(self, self.mapname, clock)
+
         return True
 
     def render(self, display):
@@ -191,6 +197,7 @@ class World(object):
 
 class KeyboardControl(object):
     def __init__(self, world, start_in_autopilot):
+        start_in_autopilot = True
         self._autopilot_enabled = start_in_autopilot
         self._control = carla.VehicleControl()
         self._steer_cache = 0.0
@@ -566,6 +573,8 @@ class CameraManager(object):
             item.append(bp)
         self._index = None
 
+        self.num_wps = None
+
     def toggle_camera(self):
         self._transform_index = (self._transform_index + 1) % len(self._camera_transforms)
         self.sensor.set_transform(self._camera_transforms[self._transform_index])
@@ -661,13 +670,24 @@ class CameraManager(object):
 
         # print("nomalized ctv", x)
         np.save(path, x)
-        
+
+    def save_normalized_ctv_wps(self, frame_number, control, loc_diffs, velocity, save_dir, max_loc_diff = 60, max_vel = 90.0):
+        path = save_dir+'{:08d}_ctv'.format(frame_number)
+        x = np.array([control.throttle, control.steer, control.brake])
+        for loc_diff in loc_diffs:
+            # wp here is already relative
+            x = np.hstack((x, np.array([norm(loc_diff.x, max_loc_diff), norm(loc_diff.y, max_loc_diff), norm(loc_diff.z, max_loc_diff)])))
+
+        x = np.hstack((x, np.array([norm(velocity.x, max_vel), norm(velocity.y, max_vel), norm(velocity.z, max_vel)])))
+        # print("save normalized_ctv_wps", x.shape)
+        np.save(path, x)
 
     def _parse_image_and_save(self, image):
         # parse the image as above
         # Note: convert, save_to_disk methods are from carla.Image class 
         # see https://carla.readthedocs.io/en/latest/python_api/#carlaimagecarlasensordata-class
-        save_dir = 'data_ctv_logdepth_norm/'
+        self.num_wps = 50
+        save_dir = 'data_ctv_logdepth_norm_catwp_{}/'.format(self.num_wps)
         sampling_radius = 90.0*1/3.6 # max_dist that the vehicle can reach in the next second
         weak_self = weakref.ref(self)
         self._parse_image(weak_self, image, save_dir)
@@ -675,18 +695,32 @@ class CameraManager(object):
         frame_number = image.frame_number
         control = self._parent.get_control() # CameraManager._parent => world.vehicle
         transform = self._parent.get_transform()
+        # TODO save yaw angle
+        rot = transform.rotation
         velocity = self._parent.get_velocity()
 
         map = self._parent.get_world().get_map()
-        waypoint = random.choice(map.get_waypoint(transform.location).next(sampling_radius))
+        # use single waypoint
+        # waypoint = random.choice(map.get_waypoint(transform.location).next(sampling_radius))
+        # concatenate a series of waypoints
+        sub_sampling_radius = 1.0
+        w0 = map.get_waypoint(transform.location) 
+        wps = []
+        wps.append(w0)
+        for i in range(1, self.num_wps):
+            wps.append(wps[i-1].next(sub_sampling_radius)[0])
 
-        loc_diff = transform.location - waypoint.transform.location
-        print("loc_diff {}".format(loc_diff))
+        # print("concatenate waypoints", len(wps))
+        loc_diffs = []
+        for wp in wps:
+            loc_diffs.append(transform.location - wp.transform.location)
+        
         # rot_diff = transform.rotation - wp_tf.rotation # TypeError: unsupported operand type(s) for -: 'Rotation' and 'Rotation'
 
         # self.save_control_for_e2c(frame_number, control, save_dir)
         # self.save_ctv_for_e2c(frame_number, control, transform, velocity, save_dir)
-        self.save_normalized_ctv(frame_number, control, loc_diff, velocity, save_dir)
+        # self.save_normalized_ctv(frame_number, control, loc_diff, velocity, save_dir)
+        self.save_normalized_ctv_wps(frame_number, control, loc_diffs, velocity, save_dir)
         
 
 def norm(x, x_max):

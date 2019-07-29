@@ -87,7 +87,11 @@ try:
 except ImportError:
     raise RuntimeError('cannot import numpy, make sure numpy package is installed')
 
+import csv
 import random
+
+
+
 # ==============================================================================
 # -- World ---------------------------------------------------------------------
 # ==============================================================================
@@ -97,6 +101,8 @@ def find_weather_presets():
     rgx = re.compile('.+?(?:(?<=[a-z])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])|$)')
     name = lambda x: ' '.join(m.group(0) for m in rgx.finditer(x))
     presets = [x for x in dir(carla.WeatherParameters) if re.match('[A-Z].+', x)]
+    # print("preset weathers", presets)
+    # ['ClearNoon', 'ClearSunset', 'CloudyNoon', 'CloudySunset', 'Default', 'HardRainNoon', 'HardRainSunset', 'MidRainSunset', 'MidRainyNoon', 'SoftRainNoon', 'SoftRainSunset', 'WetCloudyNoon', 'WetCloudySunset', 'WetNoon', 'WetSunset']
     return [(getattr(carla.WeatherParameters, x), name(x)) for x in presets]
 
 
@@ -108,6 +114,11 @@ def get_actor_display_name(actor, truncate=250):
 class World(object):
     def __init__(self, carla_world, hud):
         self.world = carla_world
+        settings = self.world.get_settings()
+        settings.synchronous_mode = True
+        settings.fixed_delta_seconds = 0.1 # must be smaller or equal to 0.1s
+        # self.world.apply_settings(settings)
+
         self.mapname = carla_world.get_map().name
         self.hud = hud
         self.world.on_tick(hud.on_world_tick)
@@ -119,17 +130,13 @@ class World(object):
             possible_vehicles = self.world.get_actors().filter('vehicle.*')
             for vehicle in possible_vehicles:
                 if vehicle.attributes['role_name'] == "hero":
-                    self.vehicle = vehicle
+                    self.vehicle = vehicle  # hero vehicle Actor(id=721, type=vehicle.lincoln.mkz2017)
         self.vehicle_name = self.vehicle.type_id
-
-        # RH: try to set initial velocity for autopilot
-        init_vel = carla.Vector3D(20, 40, 0)
-        self.vehicle.set_velocity(init_vel)
-
         self.collision_sensor = CollisionSensor(self.vehicle, self.hud)
         self.lane_invasion_sensor = LaneInvasionSensor(self.vehicle, self.hud)
-        self.camera_manager = CameraManager(self.vehicle, self.hud)
-        self.camera_manager.set_sensor(3, notify=False) # choose the camera
+        self.camera_manager = CameraManager(self.vehicle, self.hud) # depth camera is 20Hz
+        # RH: the following line determines what kind of camera the vehicle is using
+        self.camera_manager.set_sensor(3, notify=False) # 0 for rgb raw data, 3 for depth camera
         self.controller = None
         self._weather_presets = find_weather_presets()
         self._weather_index = 0
@@ -141,8 +148,7 @@ class World(object):
         start_pose.location.z += 2.0
         start_pose.rotation.roll = 0.0
         start_pose.rotation.pitch = 0.0
-        # blueprint = self._get_random_blueprint()
-        blueprint = random.choice(self.world.get_blueprint_library().filter('vehicle.*'))
+        blueprint = self._get_random_blueprint()
         self.destroy()
         self.vehicle = self.world.spawn_actor(blueprint, start_pose)
         self.collision_sensor = CollisionSensor(self.vehicle, self.hud)
@@ -165,17 +171,12 @@ class World(object):
             print("Scenario ended -- Terminating")
             return False
 
-        self.hud.tick(self, self.mapname, clock)
-        # print("speed_limits {}".format(self.vehicle.get_speed_limit()))
-
-
-        # RH: try to set all traffic lights to Green
+        # set all traffic lights to Green, it will still affect by one tick and not afterwards
         traffic_light = self.vehicle.get_traffic_light()
         if traffic_light is not None:
-            print("current traffic light")
-            print(traffic_light.get_state())
             traffic_light.set_state(carla.TrafficLightState.Green)
-            print(traffic_light.get_state())
+
+        self.hud.tick(self, self.mapname, clock)
 
         return True
 
@@ -242,6 +243,7 @@ class KeyboardControl(object):
         if not self._autopilot_enabled:
             self._parse_keys(pygame.key.get_pressed(), clock.get_time())
             world.vehicle.apply_control(self._control)
+        # record_dataset(world)
 
     def _parse_keys(self, keys, milliseconds):
         self._control.throttle = 1.0 if keys[K_UP] or keys[K_w] else 0.0
@@ -263,9 +265,39 @@ class KeyboardControl(object):
 
 
 # ==============================================================================
+# -- Try to record the localization data and control output of autopilot -------
+# ==============================================================================
+def record_dataset(world):
+    map = world.world.get_map()
+    transform = world.vehicle.get_transform()
+    location = transform.location
+    waypoint = map.get_waypoint(transform.location)
+    control = world.vehicle.get_control()
+    write_in_csv(location, waypoint.transform, waypoint.lane_width, control)
+
+def write_in_csv(location, waypoint_tf, lane_width, control, ds='localization_relative_coords_ds.csv'):
+    # example of waypoint_tf Location(x=394.307587, y=-294.747772, z=0.000000) Rotation(pitch=360.000000, yaw=246.589417, roll=0.000000)
+    #   location.z, rotation.pitch, rotation.roll may be helpful with ControlLoss scenario, where the chasis changes
+    # example of vehicle control: VehicleControl(throttle=1.000000, steer=-0.001398, brake=0.000000, hand_brake=False, reverse=False, manual_gear_shift=False, gear=3)
+    # TODO: check whether all control params are needed 
+    
+    # # ds1: 'localization_ds.csv'
+    # row = [location.x, location.y, location.z, lane_width, waypoint_tf.location.x, waypoint_tf.location.y, waypoint_tf.location.z, \
+    #     waypoint_tf.rotation.pitch, waypoint_tf.rotation.yaw, waypoint_tf.rotation.roll, control.throttle, control.steer]
+
+    # ds2: 'localization_relative_coords_ds.csv'
+    row = [location.x, location.y, location.z, lane_width, waypoint_tf.location.x-location.x, waypoint_tf.location.y-location.y, waypoint_tf.location.z-location.z, \
+        waypoint_tf.rotation.pitch, waypoint_tf.rotation.yaw, waypoint_tf.rotation.roll, control.throttle, control.steer]
+
+    # append the current data to csv file
+    with open(ds, 'a+') as csvFile:
+        writer = csv.writer(csvFile)
+        writer.writerow(row)
+        csvFile.close()
+
+# ==============================================================================
 # -- HUD -----------------------------------------------------------------------
 # ==============================================================================
-
 
 class HUD(object):
     def __init__(self, width, height):
@@ -525,9 +557,9 @@ class CameraManager(object):
         self._hud = hud
         self._recording = False
         self._camera_transforms = [
-            carla.Transform(carla.Location(x=1.6, z=1.7)),
+            carla.Transform(carla.Location(x=2.0, y=0.0, z=1.4)),  # x=1.6, z=1.7
             carla.Transform(carla.Location(x=-5.5, z=2.8), carla.Rotation(pitch=-15))]
-        self._transform_index = 1
+        self._transform_index = 0 # originally is 1, change default camera to the front one
         self._sensors = [
             ['sensor.camera.rgb', cc.Raw, 'Camera RGB'],
             ['sensor.camera.depth', cc.Raw, 'Camera Depth (Raw)'],
@@ -545,6 +577,8 @@ class CameraManager(object):
                 bp.set_attribute('image_size_y', str(hud.dim[1]))
             item.append(bp)
         self._index = None
+
+        self.num_wps = None
 
     def toggle_camera(self):
         self._transform_index = (self._transform_index + 1) % len(self._camera_transforms)
@@ -565,7 +599,9 @@ class CameraManager(object):
             # We need to pass the lambda a weak reference to self to avoid
             # circular reference.
             weak_self = weakref.ref(self)
-            self.sensor.listen(lambda image: CameraManager._parse_image(weak_self, image))
+            # set the callback method and modify it to collect dataset
+            self.sensor.listen(lambda image: CameraManager._parse_image(weak_self, image))       
+            # self.sensor.listen(lambda image: CameraManager._parse_image_and_save(self, image))
         if notify:
             self._hud.notification(self._sensors[index][2])
         self._index = index
@@ -582,7 +618,7 @@ class CameraManager(object):
             display.blit(self._surface, (0, 0))
 
     @staticmethod
-    def _parse_image(weak_self, image):
+    def _parse_image(weak_self, image, save_dir=None):
         self = weak_self()
         if not self:
             return
@@ -601,15 +637,108 @@ class CameraManager(object):
             self._surface = pygame.surfarray.make_surface(lidar_img)
         else:
             image.convert(self._sensors[self._index][1])
-            # RH check timestamp 
-            # print("img timestamp", image.timestamp)
             array = np.frombuffer(image.raw_data, dtype=np.dtype("uint8"))
             array = np.reshape(array, (image.height, image.width, 4))
             array = array[:, :, :3]
             array = array[:, :, ::-1]
             self._surface = pygame.surfarray.make_surface(array.swapaxes(0, 1))
         if self._recording:
-            image.save_to_disk('_out/%08d' % image.frame_number)
+            # RH: change the path from '_out/%08d' to 'data/%08d', 
+            #   seems to restore all prev files even after "moving the folder to Trash"
+            # image.save_to_disk('data_ctv/%08d' % image.frame_number)
+            if save_dir is None:
+                raise ValueError("no valid dir to save image")
+            image.save_to_disk(save_dir+'{:08d}'.format(image.frame_number))
+
+    def save_control_for_e2c(self, frame_number, control, save_dir):
+        path = save_dir+'{:08d}_ctv'.format(frame_number) # keep consistent with image.save_to_disk
+        print("path for npy", path)
+        x = np.array([control.throttle, control.steer, control.brake])
+        print("control in array", x)
+        np.save(path, x)
+
+
+    def save_ctv_for_e2c(self, frame_number, control, transform, velocity, save_dir):
+        path = save_dir+'{:08d}_ctv'.format(frame_number) # keep consistent with image.save_to_disk
+        loc = transform.location
+        rot = transform.rotation
+        x = np.array([control.throttle, control.steer, control.brake, \
+                      loc.x, loc.y, loc.z, rot.yaw, rot.pitch, rot.roll, \
+                      velocity.x, velocity.y, velocity.z])
+        # print("ctv in array", x)
+        np.save(path, x)
+
+    def save_normalized_ctv(self, frame_number, control, loc_diff, velocity, save_dir, max_loc_diff = 30, max_vel = 90.0):
+        path = save_dir+'{:08d}_ctv'.format(frame_number) # keep consistent with image.save_to_disk
+        
+        x = np.array([control.throttle, control.steer, control.brake, \
+                      norm(loc_diff.x, max_loc_diff), norm(loc_diff.y, max_loc_diff), norm(loc_diff.z, max_loc_diff), \
+                      norm(velocity.x, max_vel), norm(velocity.y, max_vel), norm(velocity.z, max_vel)])
+
+        # print("nomalized ctv", x)
+        np.save(path, x)
+
+    def save_normalized_ctv_wps(self, frame_number, control, loc_diffs, velocity, save_dir, max_loc_diff = 60, max_vel = 90.0):
+        path = save_dir+'{:08d}_ctv'.format(frame_number)
+        x = np.array([control.throttle, control.steer, control.brake])
+        for loc_diff in loc_diffs:
+            # wp here is already relative
+            x = np.hstack((x, np.array([norm(loc_diff.x, max_loc_diff), norm(loc_diff.y, max_loc_diff), norm(loc_diff.z, max_loc_diff)])))
+
+        x = np.hstack((x, np.array([norm(velocity.x, max_vel), norm(velocity.y, max_vel), norm(velocity.z, max_vel)])))
+        # print("save normalized_ctv_wps", x.shape)
+        np.save(path, x)
+
+    def _parse_image_and_save(self, image):
+        # parse the image as above
+        # Note: convert, save_to_disk methods are from carla.Image class 
+        # see https://carla.readthedocs.io/en/latest/python_api/#carlaimagecarlasensordata-class
+        self.num_wps = 50
+        save_dir = 'data_ctv_logdepth_norm_catwp_{}/'.format(self.num_wps)
+        sampling_radius = 90.0*1/3.6 # max_dist that the vehicle can reach in the next second
+        weak_self = weakref.ref(self)
+
+        # self._parse_image(weak_self, image, save_dir)
+
+        # save control in another file with same frame number so that it's easier to read data
+        frame_number = image.frame_number
+        control = self._parent.get_control() # CameraManager._parent => world.vehicle
+        transform = self._parent.get_transform()
+        # TODO save yaw angle
+        rot = transform.rotation
+        velocity = self._parent.get_velocity()
+
+        map = self._parent.get_world().get_map()
+        # use single waypoint
+        # waypoint = random.choice(map.get_waypoint(transform.location).next(sampling_radius))
+        # concatenate a series of waypoints
+        sub_sampling_radius = 1.0
+        w0 = map.get_waypoint(transform.location) 
+        wps = []
+        wps.append(w0)
+        for i in range(1, self.num_wps):
+            wps.append(wps[i-1].next(sub_sampling_radius)[0])
+
+        # print("concatenate waypoints", len(wps))
+        loc_diffs = []
+        for wp in wps:
+            loc_diffs.append(transform.location - wp.transform.location)
+        
+        # rot_diff = transform.rotation - wp_tf.rotation # TypeError: unsupported operand type(s) for -: 'Rotation' and 'Rotation'
+
+        # self.save_control_for_e2c(frame_number, control, save_dir)
+        # self.save_ctv_for_e2c(frame_number, control, transform, velocity, save_dir)
+        # self.save_normalized_ctv(frame_number, control, loc_diff, velocity, save_dir)
+
+        # self.save_normalized_ctv_wps(frame_number, control, loc_diffs, velocity, save_dir)
+        
+
+def norm(x, x_max):
+    n = x/(x_max*2) + 0.5
+    if n>0 and n< 1:
+        return n
+    else:
+        raise ValueError("abnormal norm x {}, x_max {}, norm {}".format(x, x_max, n))
 
 
 # ==============================================================================
@@ -623,33 +752,168 @@ def game_loop(args):
     world = None
 
     try:
-        client = carla.Client(args.host, args.port)
+        client = carla.Client(args.host, args.port) #  worker_threads=1
         client.set_timeout(2.0)
 
         display = pygame.display.set_mode(
             (args.width, args.height),
             pygame.HWSURFACE | pygame.DOUBLEBUF)
 
-        hud = HUD(args.width, args.height)
+        hud = HUD(args.width, args.height) # display, clock, and text info
         world = World(client.get_world(), hud)
         controller = KeyboardControl(world, args.autopilot)
 
         clock = pygame.time.Clock()
-        while True:
-            clock.tick_busy_loop(60)
-            if controller.parse_events(world, clock):
-                return
-            if not world.tick(clock):
-                return
-            world.render(display)
-            pygame.display.flip()
+        # modify the game loop to collect data with different init conditions
+
+        # 1. get the "origin" waypoint
+        num_wp = 500
+        num_init_pt = 100
+        horizon = 50
+        start_loc = carla.Location(x=404, y=-16.0, z=0.0)        
+        map = world.world.get_map()
+        org_wp = map.get_waypoint(start_loc) # project to the road
+        org_loc = org_wp.transform.location
+        sampling_radius = 2.0
+        wps = [org_wp]
+        for i in range(num_wp):
+            # sample ref waypoint per sampling_radius
+            wp = random.choice(wps[i].next(sampling_radius))
+            print("wp", wp)
+            wps.append(wp)
+
+            # concatenate future_wps within horizon
+            # TODO:  is that the same for all starting pts around wp
+            future_wps = []
+            future_wps.append(wp)
+
+            for j in range(horizon):
+                future_wps.append(random.choice(future_wps[-1].next(sampling_radius)))
+
+            future_wps_np = []
+            for future_wp in future_wps:
+                future_wps_np.append(np.array([future_wp.transform.location.x, future_wp.transform.location.y]))
+            future_wps_np = np.array(future_wps_np)
+            future_wps_np = future_wps_np - np.array([wp.transform.location.x, wp.transform.location.y])
+
+            # generate a list of random starting point around the ref wps
+            x0s = generate_random_starting_pts(wp, num=num_init_pt) # pass wp or wps[i], waste either the first or the last pt
+            
+            for x0 in x0s:
+                #x0 is transform object
+                # RH: try to set initial velocity for autopilot
+                
+                # t_0 set 
+                world.vehicle.set_transform(x0)
+                init_vel = generate_random_velocity(max_vel = 30)
+                world.vehicle.set_velocity(init_vel)
+                print("set init state", hud.frame_number, hud.simulation_time)
+                print(x0, init_vel)
+                world.world.wait_for_tick()
+
+                while True:
+                    # tick             
+                    if controller.parse_events(world, clock): # e.g. press `Esc` key
+                        print("Escape")
+                        return
+                    if not world.tick(clock): # e.g. no cars
+                        print("No ego vehicle")
+                        return
+                    # world.render(display)
+                    # pygame.display.flip()
+                    # clock.tick_busy_loop(60) # move to the bottom TODO: check whether it works
+                    # # world.world.wait_for_tick(1)
+                                    
+                    # t_1 get current state
+                    cur_loc = world.vehicle.get_transform()
+                    cur_vel = world.vehicle.get_velocity()
+                    control = world.vehicle.get_control()
+                    print("get current state", hud.frame_number, hud.simulation_time)
+                    world.world .wait_for_tick()
+                    # print(cur_loc, cur_vel)
+                    # print(control)
+
+                    # tick 
+                    if controller.parse_events(world, clock): # e.g. press `Esc` key
+                        print("Escape")
+                        return
+                    if not world.tick(clock): # e.g. no cars
+                        print("No ego vehicle")
+                        return
+                    world.render(display)
+                    pygame.display.flip()
+                    clock.tick_busy_loop(60) # move to the bottom TODO: check whether it works
+                    world.world.wait_for_tick(0.1)
+                    
+                    # t_2 get next state
+                    next_loc = world.vehicle.get_transform()
+                    next_vel = world.vehicle.get_velocity()
+
+                    print("get next state",  hud.frame_number, hud.simulation_time)
+                    # print(next_loc, next_vel)
+
+                    # TODO: save the states and transition
+
+                    # # another tick before re-configuration
+                    # if controller.parse_events(world, clock): # e.g. press `Esc` key
+                    #     print("Escape")
+                    #     return
+                    # if not world.tick(clock): # e.g. no cars
+                    #     print("No ego vehicle")
+                    #     return
+                    # world.render(display)
+                    # pygame.display.flip()
+                    # clock.tick_busy_loop(60)
+                    # pygame.time.delay(1000)
+                break
+            break
 
     finally:
-
         if world is not None:
             world.destroy()
 
         pygame.quit()
+
+
+
+
+def record_dataset(world):
+
+    transform = world.vehicle.get_transform()
+    location = transform.location
+    waypoint = map.get_waypoint(transform.location)
+    control = world.vehicle.get_control()
+    write_in_csv(location, waypoint.transform, waypoint.lane_width, control)
+
+# ==============================================================================
+# --methods used for modified game loop -------
+# ==============================================================================
+def generate_random_starting_pts(wp, num=100):
+    """
+    generate a list of random starting point around one wp
+    params: 
+        wp: carla.Waypoint object
+        num: number of starting ponts to be generated
+
+    """
+    center = wp.transform.location
+    radius = 1.8
+    if radius < wp.lane_width/2.0:
+        raise ValueError("radius < wp.lane_width/2")
+    x0s = []
+    for i in range(num):
+        # get random location
+        x = center.x + radius*(2*random.random()-1.0)
+        y = center.y + radius*(2*random.random()-1.0)
+        z = center.z # keep the same height
+        # get random rotation
+        yaw = 180*(2*random.random()-1.0) # rotation.yaw is stored in degrees
+        x0s.append(carla.Transform(location=carla.Location(x=x, y=y, z=z), rotation=carla.Rotation(yaw=yaw)))
+    # print("one of {} samples starting pts around {}: {}".format(len(x0s), wp, x0s[0]))
+    return x0s
+
+def generate_random_velocity(max_vel=30):
+    return carla.Vector3D(max_vel*(2*random.random()-1.0), max_vel*(2*random.random()-1.0), 0)
 
 
 # ==============================================================================
@@ -683,10 +947,11 @@ def main():
     argparser.add_argument(
         '--res',
         metavar='WIDTHxHEIGHT',
-        default='1280x720',
-        help='window resolution (default: 1280x720)')
+        default='200x88',
+        help='window resolution (default: 200x88, originally default: 1280x720)')
     args = argparser.parse_args()
 
+    # RH: mmodify the windows_size to collect smaller images
     args.width, args.height = [int(x) for x in args.res.split('x')]
 
     log_level = logging.DEBUG if args.debug else logging.INFO
