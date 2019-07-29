@@ -89,7 +89,8 @@ except ImportError:
 
 import csv
 import random
-
+import tables # in order to save data
+import pandas as pd
 
 
 # ==============================================================================
@@ -750,6 +751,7 @@ def game_loop(args):
     pygame.init()
     pygame.font.init()
     world = None
+    outfile = "long_states.csv"
 
     try:
         client = carla.Client(args.host, args.port) #  worker_threads=1
@@ -782,20 +784,6 @@ def game_loop(args):
             print("wp", wp)
             wps.append(wp)
 
-            # concatenate future_wps within horizon
-            # TODO:  is that the same for all starting pts around wp
-            future_wps = []
-            future_wps.append(wp)
-
-            for j in range(horizon):
-                future_wps.append(random.choice(future_wps[-1].next(sampling_radius)))
-
-            future_wps_np = []
-            for future_wp in future_wps:
-                future_wps_np.append(np.array([future_wp.transform.location.x, future_wp.transform.location.y]))
-            future_wps_np = np.array(future_wps_np)
-            future_wps_np = future_wps_np - np.array([wp.transform.location.x, wp.transform.location.y])
-
             # generate a list of random starting point around the ref wps
             x0s = generate_random_starting_pts(wp, num=num_init_pt) # pass wp or wps[i], waste either the first or the last pt
             
@@ -810,8 +798,10 @@ def game_loop(args):
                 print("set init state", hud.frame_number, hud.simulation_time)
                 print(x0, init_vel)
                 world.world.wait_for_tick()
+                init_frame_number = hud.frame_number
+                
 
-                while True:
+                while hud.frame_number-init_frame_number<400: # 20s
                     # tick             
                     if controller.parse_events(world, clock): # e.g. press `Esc` key
                         print("Escape")
@@ -825,47 +815,64 @@ def game_loop(args):
                     # # world.world.wait_for_tick(1)
                                     
                     # t_1 get current state
+                    world.world.wait_for_tick()
                     cur_loc = world.vehicle.get_transform()
                     cur_vel = world.vehicle.get_velocity()
                     control = world.vehicle.get_control()
                     print("get current state", hud.frame_number, hud.simulation_time)
-                    world.world .wait_for_tick()
-                    # print(cur_loc, cur_vel)
-                    # print(control)
+                    print(cur_loc, cur_vel)
+
+                    # concatenate future_wps within horizon
+                    cur_wp = map.get_waypoint(cur_loc.location)
+                    future_wps = []
+                    future_wps.append(cur_wp)
+
+                    for j in range(horizon):
+                        future_wps.append(random.choice(future_wps[-1].next(sampling_radius)))
+
+                    future_wps_np = []
+                    for future_wp in future_wps:
+                        future_wps_np.append(np.array([future_wp.transform.location.x, future_wp.transform.location.y]))
+                    future_wps_np = np.array(future_wps_np)
+                    future_wps_np = future_wps_np - np.array([cur_wp.transform.location.x, cur_wp.transform.location.y])
+                    # print("future_wps_np", future_wps_np.shape, future_wps_np.flatten().shape) #future_wps_np (51, 2) (102,)
+
+
+                    # print(control)                    
 
                     # tick 
-                    if controller.parse_events(world, clock): # e.g. press `Esc` key
-                        print("Escape")
-                        return
-                    if not world.tick(clock): # e.g. no cars
-                        print("No ego vehicle")
-                        return
-                    world.render(display)
-                    pygame.display.flip()
-                    clock.tick_busy_loop(60) # move to the bottom TODO: check whether it works
-                    world.world.wait_for_tick(0.1)
+                    world.world .wait_for_tick()                 
                     
                     # t_2 get next state
                     next_loc = world.vehicle.get_transform()
                     next_vel = world.vehicle.get_velocity()
 
-                    print("get next state",  hud.frame_number, hud.simulation_time)
-                    # print(next_loc, next_vel)
-
                     # TODO: save the states and transition
+                    # df = pd.DataFrame({'cur_loc': transform_to_arr(cur_loc), \
+                    #                    'cur_vel': np.array([cur_vel.x, cur_vel.y, cur_vel.z]), \
+                    #                    'next_loc': transform_to_arr(next_loc),\
+                    #                    'next_vel': np.array([next_vel.x, next_vel.y, next_vel.z]), \
+                    #                    'cur_loc_rl': np.array([cur_loc.location.x, cur_loc.location.y])- np.array([cur_wp.transform.location.x, cur_wp.transform.location.y]), \
+                    #                    'future_wps': future_wps_np.flatten(), \
+                    #                    'next_loc_rl': np.array([next_loc.location.x, next_loc.location.y])- np.array([cur_wp.transform.location.x, cur_wp.transform.location.y])})
+                    # with open(outfile, 'a') as f:
+                    #     df.to_csv(f)
+                    row = list(np.hstack((np.array([control.throttle, control.steer, control.brake]), \
+                                          transform_to_arr(cur_loc), np.array([cur_vel.x, cur_vel.y, cur_vel.z]),\
+                                          transform_to_arr(next_loc), np.array([next_vel.x, next_vel.y, next_vel.z]), \
+                                          np.array([cur_loc.location.x, cur_loc.location.y])- np.array([cur_wp.transform.location.x, cur_wp.transform.location.y]), \
+                                          future_wps_np.flatten(), \
+                                          np.array([next_loc.location.x, next_loc.location.y])- np.array([cur_wp.transform.location.x, cur_wp.transform.location.y]))))
 
-                    # # another tick before re-configuration
-                    # if controller.parse_events(world, clock): # e.g. press `Esc` key
-                    #     print("Escape")
-                    #     return
-                    # if not world.tick(clock): # e.g. no cars
-                    #     print("No ego vehicle")
-                    #     return
-                    # world.render(display)
-                    # pygame.display.flip()
-                    # clock.tick_busy_loop(60)
-                    # pygame.time.delay(1000)
-                break
+                    with open(outfile, 'a+') as csvFile:
+                        writer = csv.writer(csvFile)
+                        writer.writerow(row)
+                        csvFile.close()
+
+                    world.render(display)
+                    pygame.display.flip()
+                    clock.tick_busy_loop(60)
+
             break
 
     finally:
@@ -875,15 +882,8 @@ def game_loop(args):
         pygame.quit()
 
 
-
-
-def record_dataset(world):
-
-    transform = world.vehicle.get_transform()
-    location = transform.location
-    waypoint = map.get_waypoint(transform.location)
-    control = world.vehicle.get_control()
-    write_in_csv(location, waypoint.transform, waypoint.lane_width, control)
+def transform_to_arr(tf):
+    return np.array([tf.location.x, tf.location.y, tf.location.z, tf.rotation.pitch, tf.rotation.yaw, tf.rotation.roll])
 
 # ==============================================================================
 # --methods used for modified game loop -------

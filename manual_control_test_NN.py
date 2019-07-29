@@ -129,8 +129,9 @@ def get_actor_display_name(actor, truncate=250):
 class World(object):
 	# 'models/NN_model_relative_epo50.pth'
 	def __init__(self, carla_world, hud, \
-				 nn_model_path='models/MLP/MLP_model_ctv_logdepth_norm_catwp_50_5_WSE_Adam_monly_1000.pth', \
+				 nn_model_path= 'models/MLP/MLP_model_long_states_50.pth', \
 				 e2c_model_path='models/E2C/E2C_model_ctv_logdepth_norm_5.pth'):
+		# 'models/MLP/MLP_model_ctv_logdepth_norm_catwp_50_5_WSE_Adam_monly_1000.pth', \
 		self.world = carla_world
 		self.mapname = carla_world.get_map().name
 		self.hud = hud
@@ -155,14 +156,14 @@ class World(object):
 		# RH
 		self.nn_model = torch.load(nn_model_path)
 		self.nn_model.eval()
-		print("world.nn_model")
+		print("world.nn_model", nn_model_path)
 		print(self.nn_model)
 		self.e2c_model = torch.load(e2c_model_path)
 		self.e2c_model.eval()
-		print("world.e2c_model")
-		print(self.e2c_model)
+		# print("world.e2c_model")
+		# print(self.e2c_model)
 		self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-		print("init None tensor")
+		# print("init None tensor")
 		self.m_tensor = None
 		self.img_tensor = None
 
@@ -269,8 +270,9 @@ class KeyboardControl(object):
 
 		if not self._autopilot_enabled:
 			if self._nn_controller_enabled:
-				self.get_nn_controller(world)
-				self._parse_keys_other(pygame.key.get_pressed(), clock.get_time())
+				# self.get_nn_controller(world)
+				# self._parse_keys_other(pygame.key.get_pressed(), clock.get_time())
+				self.get_nn_controller_wp(world)
 			elif self._e2c_controller_enabled:
 				t, s, b = self.get_e2c_controller(world)
 				# print("t, s, b")
@@ -291,7 +293,7 @@ class KeyboardControl(object):
 			world.vehicle.apply_control(self._control)
 			# location = world.vehicle.get_transform().location
 			# print("{} location".format(world.hud.frame_number), world.vehicle.get_transform())
-		else:
+		# else:
 			# print autopilot control
 			# print("{} apply control".format(world.hud.frame_number), world.vehicle.get_control())
 				
@@ -319,7 +321,6 @@ class KeyboardControl(object):
 		model = world.nn_model
 		location = world.vehicle.get_transform().location
 		waypoint = world.world.get_map().get_waypoint(location)
-		draw_waypoint
 		tf = waypoint.transform
 		states = np.hstack((location.x, location.y, location.z, waypoint.lane_width, tf.location.x, tf.location.y, tf.location.z, \
 			tf.rotation.pitch, tf.rotation.yaw, tf.rotation.roll))
@@ -332,6 +333,39 @@ class KeyboardControl(object):
 		print("control from nn_controller", control)
 		self._control.throttle = control[0]
 		self._control.steer = control[1]
+
+
+	def get_nn_controller_wp(self, world, horizon=50, sampling_radius=2.0):
+		model = world.nn_model
+		cur_loc = world.vehicle.get_transform().location
+		map = world.world.get_map()
+		# concatenate future_wps within horizon
+		cur_wp = map.get_waypoint(cur_loc)
+		future_wps = []
+		future_wps.append(cur_wp)
+
+		for j in range(horizon):
+			future_wps.append(random.choice(future_wps[-1].next(sampling_radius)))
+
+		future_wps_np = []
+		for future_wp in future_wps:
+			future_wps_np.append(np.array([future_wp.transform.location.x, future_wp.transform.location.y]))
+		future_wps_np = np.array(future_wps_np)
+		future_wps_np = future_wps_np - np.array([cur_wp.transform.location.x, cur_wp.transform.location.y])
+
+		state = np.hstack((np.array([cur_loc.x, cur_loc.y])- np.array([cur_wp.transform.location.x, cur_wp.transform.location.y]), \
+					  future_wps_np.flatten()))
+		
+		state =  torch.from_numpy(state.astype(np.float32))
+		state = state.view(1, -1)
+
+		control = model(state)
+		control = control.data.cpu().numpy()[0]
+		print("control from nn_controller", control)
+		self._control.throttle = control[0].item()
+		self._control.steer = control[1].item()
+		self._control.brake = 1 if control[2].item()>0.5 else 0
+
 
 	def get_e2c_controller(self, world):
 		# print("get_e2c_controller")
@@ -873,6 +907,7 @@ def game_loop(args):
 				return
 			world.render(display)
 			pygame.display.flip()
+			world.world.wait_for_tick()
 
 	finally:
 
