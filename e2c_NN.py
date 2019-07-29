@@ -14,6 +14,8 @@ from e2c_controller_cat import CarlaData, CarlaDataPro, binary_crossentropy
 from cat_configs import E2C_cat
 
 import csv
+import math
+import matplotlib.pyplot as plt 
 
 
 torch.set_default_dtype(torch.float32)
@@ -57,15 +59,16 @@ class MLP_e2c(nn.Module):
 		x = x.view(x.size(0), -1)
 		# print("in forward", x.size())
 		x = self.layers(x)
+		return self.tanh(x)
 		# TODO: Use sigmoid, tanh, sigmoid on throttle, steer, brake, respectively
 		# t, s, b = torch.split(x, (1, 1, 1), dim=1)
-		throttle = self.sig(x[:, 0]).view(x.shape[0],-1)
-		steer = self.tanh(x[:, 1]).view(x.shape[0],-1)
-		brake = self.sig(x[:, 2]).view(x.shape[0],-1)
+		# throttle = self.sig(x[:, 0]).view(x.shape[0],-1)
+		# steer = self.tanh(x[:, 1]).view(x.shape[0],-1)
+		# brake = self.sig(x[:, 2]).view(x.shape[0],-1)
 
 		# print("tsb", throttle.size(), steer.size(), brake.size())
 
-		return torch.cat([throttle, steer, brake], dim=1)
+		# return torch.cat([throttle, steer, brake], dim=1)
 
 
 class FC_coil(nn.Module):
@@ -156,30 +159,65 @@ if __name__ == '__main__':
 
 	# Method 2: load data from "long_states.csv" collected with different starting points
 	# TODO: load csv file to dataset format
+	# num_wps = 50
+	# MLP_model_path = 'models/MLP/MLP_model_long_states_{}.pth'.format(num_wps)
+	# model = FC_coil(nx=104, ny=3)
+	# z = []
+	# u = []
+	# line_count = 0
+	# with open("long_states_2.csv") as csv_file:
+	# 	csv_reader = csv.reader(csv_file)
+	# 	for row in csv_reader:
+	# 		state = [float(i) for i in row[-106:-2]]
+	# 		action = [float(i) for i in row[:3]]
+	# 		# next_state = [-2].float()
+	# 		z.append(torch.from_numpy(np.array(state).astype(np.float32)))
+	# 		u.append(torch.from_numpy(np.array(action).astype(np.float32)))
+	# 		line_count += 1
+
+	# 		# row = list(np.hstack((np.array([control.throttle, control.steer, control.brake]), \
+	# 		#                       transform_to_arr(cur_loc), np.array([cur_vel.x, cur_vel.y, cur_vel.z]),\
+	# 		#                       transform_to_arr(next_loc), np.array([next_vel.x, next_vel.y, next_vel.z]), \
+	# 		#                       np.array([cur_loc.location.x, cur_loc.location.y])- np.array([cur_wp.transform.location.x, cur_wp.transform.location.y]), \
+	# 		#                       future_wps_np.flatten(), \
+	# 		#                       np.array([next_loc.location.x, next_loc.location.y])- np.array([cur_wp.transform.location.x, cur_wp.transform.location.y]))))
+	# 		# action 3, cur_loc 6, cur_vel 3, next_loc 6, next_vel 3, 
+	# 		# relative loc 2 + 51*2 + 2
+
+
+
+	# Train a dynamics model
 	num_wps = 50
-	MLP_model_path = 'models/MLP/MLP_model_long_states_{}.pth'.format(num_wps)
-	model = FC_coil(nx=104, ny=3)
+	dyn_model_path = 'models/MLP/MLP_model_dynamics_{}_Adam.pth'.format(num_wps)
+	model = MLP_e2c(nx=7, ny=4) # nx: px, py, speed, yaw, throttle, steer, brake; ny:  px, py, speed, yaw
 	z = []
 	u = []
-	line_count = 0
-	with open("long_states.csv") as csv_file:
+	line_count = 0	
+	if_print = True
+	max_pos_val = 500
+	max_yaw_val = 180
+	max_speed_val = 40
+	with open("long_states_2.csv") as csv_file:
 		csv_reader = csv.reader(csv_file)
 		for row in csv_reader:
-			state = [float(i) for i in row[-106:-2]]
-			action = [float(i) for i in row[:3]]
-			# next_state = [-2].float()
+			# px = row[3]
+			# py = row[4]
+			# speed = math.sqrt(row[9]**2+row[10]**2)
+			# yaw = row[7]
+			row = [float(i) for i in row]
+			action = row[:3]
+			state = [row[3]/max_pos_val, row[4]/max_pos_val, math.sqrt(float(row[9])**2+float(row[10])**2)/max_speed_val, row[7]/max_yaw_val]
+			next_state = [row[12]/max_pos_val, row[13]/max_pos_val, math.sqrt(float(row[18])**2+float(row[19])**2)/max_speed_val, row[16]/max_yaw_val]
+			if if_print:
+				print("action", action)
+				print("state", state), 
+				print("next_state", next_state)
+				if_print = False
+			state.extend(action) # concatenate the action to the state list
 			z.append(torch.from_numpy(np.array(state).astype(np.float32)))
-			u.append(torch.from_numpy(np.array(action).astype(np.float32)))
+			u.append(torch.from_numpy(np.array(next_state).astype(np.float32)))
 			line_count += 1
 
-			# row = list(np.hstack((np.array([control.throttle, control.steer, control.brake]), \
-			#                       transform_to_arr(cur_loc), np.array([cur_vel.x, cur_vel.y, cur_vel.z]),\
-			#                       transform_to_arr(next_loc), np.array([next_vel.x, next_vel.y, next_vel.z]), \
-			#                       np.array([cur_loc.location.x, cur_loc.location.y])- np.array([cur_wp.transform.location.x, cur_wp.transform.location.y]), \
-			#                       future_wps_np.flatten(), \
-			#                       np.array([next_loc.location.x, next_loc.location.y])- np.array([cur_wp.transform.location.x, cur_wp.transform.location.y]))))
-			# action 3, cur_loc 6, cur_vel 3, next_loc 6, next_vel 3, 
-			# relative loc 2 + 51*2 + 2
 
 	print("process {} liness".format(line_count))
 	print("z {}, u {}".format(z[0].size(), u[0].size()))
@@ -194,14 +232,15 @@ if __name__ == '__main__':
 
 	# TODO: How to  utilize GPU for training and/or testing
 
-	epochs = 500
+	epochs = 5 #500
 
 	print("iterate over epochs")
-	mean_train_losses = []
+	loss_values = []
+	if_print = True
 	for epoch in range(epochs):
 		model.train()
-		
 		train_losses = []
+		running_loss =0.0
 		for i, (z, u) in enumerate(train_loader):
 			z = z.view(z.shape[0], -1)
 			u = u.view(u.shape[0], -1)
@@ -210,10 +249,19 @@ if __name__ == '__main__':
 
 			optimizer.zero_grad()
 			outputs = model(z)
+			if if_print:
+				print("ground truth", u[0])
+				print("outputs", outputs[0])
+				if_print = False
+
 			# if i%10 == 0:
 			# 	print(i, outputs.size(), u.size())
-			# loss = loss_fn(outputs, u)
-			loss = -binary_crossentropy(u, outputs).sum(dim=1).mean()
+			loss = loss_fn(outputs, u)
+			# print("loss", loss)
+
+
+			# loss = -binary_crossentropy(u, outputs).sum(dim=1).mean()
+
 			# loss1 = -binary_crossentropy(u[:, 0], outputs[:, 0]).sum().mean()
 			# loss2 = weighted_mse_loss(outputs[:, 1:], u[:, 1:])
 			# loss = loss1 + loss2
@@ -221,13 +269,20 @@ if __name__ == '__main__':
 			optimizer.step()
 			
 			train_losses.append(loss.item())
+			running_loss += loss.item()
+		loss_values.append(running_loss/len(train_dataset))
 				
 		model.eval()
-
 
 		print('epoch : {}, train loss : {:.4f},'\
 		 .format(epoch+1, np.mean(train_losses)))
 
 	model.eval()
-	torch.save(model, MLP_model_path)
+	# torch.save(model, MLP_model_path)
+	# torch.save(model, dyn_model_path)
 	print(model)
+	plt.plot(loss_values)
+	plt.xlabel('Epoch number')
+	plt.ylabel('Train loss')
+	plt.show()
+	plt.savefig('models/MLP/{}_loss.png'.format(dyn_model_path.split("/")[-1]))

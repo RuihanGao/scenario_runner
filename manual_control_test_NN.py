@@ -130,7 +130,8 @@ class World(object):
 	# 'models/NN_model_relative_epo50.pth'
 	def __init__(self, carla_world, hud, \
 				 nn_model_path= 'models/MLP/MLP_model_long_states_50.pth', \
-				 e2c_model_path='models/E2C/E2C_model_ctv_logdepth_norm_5.pth'):
+				 e2c_model_path='models/E2C/E2C_model_ctv_logdepth_norm_5.pth', \
+				 dyn_model_path='models/MLP/MLP_model_dynamics_50_Adam.pth'):
 		# 'models/MLP/MLP_model_ctv_logdepth_norm_catwp_50_5_WSE_Adam_monly_1000.pth', \
 		self.world = carla_world
 		self.mapname = carla_world.get_map().name
@@ -162,10 +163,14 @@ class World(object):
 		self.e2c_model.eval()
 		# print("world.e2c_model")
 		# print(self.e2c_model)
+		self.dyn_model = torch.load(dyn_model_path)
+		print("world.dyn_model", dyn_model_path)
+		print(self.dyn_model)
 		self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 		# print("init None tensor")
 		self.m_tensor = None
 		self.img_tensor = None
+		self.dyn_pred = None
 
 	def restart(self):
 		cam_index = self.camera_manager._index
@@ -291,9 +296,13 @@ class KeyboardControl(object):
 
 			# print("{} apply control".format(world.hud.frame_number), self._control)
 			world.vehicle.apply_control(self._control)
+			print(world.hud.frame_number, "apply control")
 			# location = world.vehicle.get_transform().location
 			# print("{} location".format(world.hud.frame_number), world.vehicle.get_transform())
-		# else:
+		else:
+			# test dynamics model
+			self.get_nn_pred(world)
+
 			# print autopilot control
 			# print("{} apply control".format(world.hud.frame_number), world.vehicle.get_control())
 				
@@ -338,6 +347,7 @@ class KeyboardControl(object):
 	def get_nn_controller_wp(self, world, horizon=50, sampling_radius=2.0):
 		model = world.nn_model
 		cur_loc = world.vehicle.get_transform().location
+		print(world.hud.frame_number, "get cur_loc")
 		map = world.world.get_map()
 		# concatenate future_wps within horizon
 		cur_wp = map.get_waypoint(cur_loc)
@@ -361,11 +371,37 @@ class KeyboardControl(object):
 
 		control = model(state)
 		control = control.data.cpu().numpy()[0]
-		print("control from nn_controller", control)
+		print(world.hud.frame_number, "control from nn_controller", control)
 		self._control.throttle = control[0].item()
 		self._control.steer = control[1].item()
 		self._control.brake = 1 if control[2].item()>0.5 else 0
 
+	def get_nn_pred(self, world):
+		# TODO keep consistent with e2c_NN.py
+		max_pos_val = 500
+		max_yaw_val = 180
+		max_speed_val = 40
+		model = world.dyn_model
+		if model is None:
+			raise ValueError("No valid dynamics model")
+		t = world.vehicle.get_transform()
+		c = world.vehicle.get_control()
+		v = world.vehicle.get_velocity()
+		state = [t.location.x/max_pos_val, t.location.y/max_pos_val, math.sqrt(v.x**2+v.y**2)/max_speed_val, t.rotation.yaw/max_yaw_val, c.throttle, c.steer, c.brake]
+		state = np.array([float(i) for i in state])
+		print("cur_state", state[:-3])
+		if world.dyn_pred is not None:
+			loss_fn = torch.nn.MSELoss()
+			print("input", world.dyn_pred, "target", torch.tensor(state[:-3]))
+			loss = loss_fn(world.dyn_pred, torch.tensor(state[:-3].astype(np.float32)))
+			print("loss", loss)
+		
+		state = torch.from_numpy(state.astype(np.float32)).view(1, -1)
+		next_state = model(state)
+		# next_state = next_state.data.cpu().numpy()[0]
+		world.dyn_pred = next_state
+		# TODO compare with get_transform returned in the next tick
+		print("dyn_model pred", next_state)
 
 	def get_e2c_controller(self, world):
 		# print("get_e2c_controller")

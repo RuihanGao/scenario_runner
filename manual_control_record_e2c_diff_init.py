@@ -751,7 +751,7 @@ def game_loop(args):
     pygame.init()
     pygame.font.init()
     world = None
-    outfile = "long_states.csv"
+    outfile = "long_states_2.csv"
 
     try:
         client = carla.Client(args.host, args.port) #  worker_threads=1
@@ -770,9 +770,10 @@ def game_loop(args):
 
         # 1. get the "origin" waypoint
         num_wp = 500
-        num_init_pt = 100
+        num_init_pt = 200
         horizon = 50
-        start_loc = carla.Location(x=404, y=-16.0, z=0.0)        
+        start_loc = carla.Location(x=405.405, y=-59.49, z=0.0)      
+    
         map = world.world.get_map()
         org_wp = map.get_waypoint(start_loc) # project to the road
         org_loc = org_wp.transform.location
@@ -781,7 +782,7 @@ def game_loop(args):
         for i in range(num_wp):
             # sample ref waypoint per sampling_radius
             wp = random.choice(wps[i].next(sampling_radius))
-            print("wp", wp)
+            print("wp {}".format(i), wp)
             wps.append(wp)
 
             # generate a list of random starting point around the ref wps
@@ -795,7 +796,7 @@ def game_loop(args):
                 world.vehicle.set_transform(x0)
                 init_vel = generate_random_velocity(max_vel = 30)
                 world.vehicle.set_velocity(init_vel)
-                print("set init state", hud.frame_number, hud.simulation_time)
+                # print("set init state", hud.frame_number, hud.simulation_time)
                 print(x0, init_vel)
                 world.world.wait_for_tick()
                 init_frame_number = hud.frame_number
@@ -819,7 +820,7 @@ def game_loop(args):
                     cur_loc = world.vehicle.get_transform()
                     cur_vel = world.vehicle.get_velocity()
                     control = world.vehicle.get_control()
-                    print("get current state", hud.frame_number, hud.simulation_time)
+                    # print("get current state", hud.frame_number, hud.simulation_time)
                     print(cur_loc, cur_vel)
 
                     # concatenate future_wps within horizon
@@ -873,7 +874,7 @@ def game_loop(args):
                     pygame.display.flip()
                     clock.tick_busy_loop(60)
 
-            break
+
 
     finally:
         if world is not None:
