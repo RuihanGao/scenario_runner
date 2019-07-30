@@ -59,8 +59,8 @@ with open(yaml_filename, 'r') as f:
 
 print("load empty CoIlModel")
 modelB = CoILICRA(yaml_cfg.MODEL_CONFIGURATION)
-# for param_tensor in modelB.state_dict():
-# 	print(param_tensor, "\t", modelB.state_dict()[param_tensor].size())
+for param_tensor in modelB.state_dict():
+	print(param_tensor, "\t", modelB.state_dict()[param_tensor].size())
 
 param_tensor = 'branches.branched_modules.0.layers.0.0.weight'
 print(param_tensor, "\t", modelB.state_dict()[param_tensor])
@@ -73,3 +73,38 @@ modelB.eval()
 # TODO: The structure is specified in coil_icra. 
 # check which module you want to reuse and create your own.
 # then load the state_dict with `strict=False`
+
+
+class FC_coil_cut(nn.Module):
+	"""
+	copy the full-connectin network from coil, adpted for MLP controller
+	"""
+	def __init__(self, nx=106, ny=2, nh=53, p=0.2):
+		"""
+		original coil (512-256-3)
+		input: latent_embeddings dim_z = 106
+		one hidden layer: 64
+		output: dim_u = 3
+		p: possibility for dropout
+		"""
+		super(FC_coil, self).__init__()
+		self.layers = nn.Sequential(
+			nn.Linear(nx, nh),
+			nn.Dropout2d(p=p),
+			nn.ReLU(),
+			nn.Linear(nh, ny),
+			nn.Dropout2d(p=p)
+		)
+		self.sig = nn.Sigmoid()
+		self.tanh = nn.Tanh()
+
+	def forward(self, x):
+		x = x.view(x.size(0), -1)
+		x = self.layers(x)
+
+		# throttle = self.sig(x[:, 0]).view(x.shape[0],-1)
+		# steer = self.tanh(x[:, 1]).view(x.shape[0],-1)
+		# brake = self.sig(x[:, 2]).view(x.shape[0],-1)
+
+		# return torch.cat([throttle, steer, brake], dim=1)
+		return self.sig(x)

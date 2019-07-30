@@ -121,11 +121,6 @@ class World(object):
                 if vehicle.attributes['role_name'] == "hero":
                     self.vehicle = vehicle
         self.vehicle_name = self.vehicle.type_id
-
-        # RH: try to set initial velocity for autopilot
-        init_vel = carla.Vector3D(20, 40, 0)
-        self.vehicle.set_velocity(init_vel)
-
         self.collision_sensor = CollisionSensor(self.vehicle, self.hud)
         self.lane_invasion_sensor = LaneInvasionSensor(self.vehicle, self.hud)
         self.camera_manager = CameraManager(self.vehicle, self.hud)
@@ -167,15 +162,6 @@ class World(object):
 
         self.hud.tick(self, self.mapname, clock)
         # print("speed_limits {}".format(self.vehicle.get_speed_limit()))
-
-
-        # RH: try to set all traffic lights to Green
-        traffic_light = self.vehicle.get_traffic_light()
-        if traffic_light is not None:
-            print("current traffic light")
-            print(traffic_light.get_state())
-            traffic_light.set_state(carla.TrafficLightState.Green)
-            print(traffic_light.get_state())
 
         return True
 

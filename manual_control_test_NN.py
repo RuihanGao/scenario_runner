@@ -107,6 +107,8 @@ from torchvision.transforms import ToTensor
 from cat_configs import E2C_cat
 from e2c_NN import MLP_e2c, FC_coil
 
+from manual_control_record_e2c_diff_init import transform_to_arr
+
 
 
 # ==============================================================================
@@ -130,9 +132,9 @@ class World(object):
 	# 'models/NN_model_relative_epo50.pth'
 	def __init__(self, carla_world, hud, \
 				 nn_model_path= 'models/MLP/MLP_model_long_states_50.pth', \
+				 nn_e2c_model_path = 'models/MLP/MLP_model_ctv_logdepth_norm_catwp_50_5_WSE_Adam_monly_1000.pth', \
 				 e2c_model_path='models/E2C/E2C_model_ctv_logdepth_norm_5.pth', \
-				 dyn_model_path='models/MLP/MLP_model_dynamics_50_Adam.pth'):
-		# 'models/MLP/MLP_model_ctv_logdepth_norm_catwp_50_5_WSE_Adam_monly_1000.pth', \
+				 dyn_model_path='models/MLP/MLP_model_dynamics_50_SGD.pth'):
 		self.world = carla_world
 		self.mapname = carla_world.get_map().name
 		self.hud = hud
@@ -150,12 +152,13 @@ class World(object):
 		self.collision_sensor = CollisionSensor(self.vehicle, self.hud)
 		self.lane_invasion_sensor = LaneInvasionSensor(self.vehicle, self.hud)
 		self.camera_manager = CameraManager(self.vehicle, self.hud)
-		self.camera_manager.set_sensor(3, notify=False)
+		self.camera_manager.set_sensor(0, notify=False)
 		self.controller = None
 		self._weather_presets = find_weather_presets()
 		self._weather_index = 0
 		# RH
 		self.nn_model = torch.load(nn_model_path)
+		self.nn_e2c_model = torch.load(nn_e2c_model_path)
 		self.nn_model.eval()
 		print("world.nn_model", nn_model_path)
 		print(self.nn_model)
@@ -232,6 +235,9 @@ class KeyboardControl(object):
 		self._e2c_controller_enabled = start_in_e2c_controller
 		self._control = carla.VehicleControl()
 		self._steer_cache = 0.0
+		self.retrain = True
+		self.test_dynamics = False
+
 		world.vehicle.set_autopilot(self._autopilot_enabled)
 		world.hud.notification("Press 'H' or '?' for help.", seconds=4.0)
 
@@ -300,12 +306,13 @@ class KeyboardControl(object):
 			# location = world.vehicle.get_transform().location
 			# print("{} location".format(world.hud.frame_number), world.vehicle.get_transform())
 		else:
-			# test dynamics model
-			self.get_nn_pred(world)
-
-			# print autopilot control
-			# print("{} apply control".format(world.hud.frame_number), world.vehicle.get_control())
-				
+			if self.retrain:
+				# collect data for retraining
+				# TODO
+				self.record_retrain_data(world)
+			if self.test_dynamics:
+				# test dynamics model
+				self.get_nn_pred(world)				
 		# record_dataset(world)
 
 	def _parse_keys(self, keys, milliseconds):
@@ -389,7 +396,7 @@ class KeyboardControl(object):
 		v = world.vehicle.get_velocity()
 		state = [t.location.x/max_pos_val, t.location.y/max_pos_val, math.sqrt(v.x**2+v.y**2)/max_speed_val, t.rotation.yaw/max_yaw_val, c.throttle, c.steer, c.brake]
 		state = np.array([float(i) for i in state])
-		print("cur_state", state[:-3])
+		# print("cur_state", state[:-3])
 		if world.dyn_pred is not None:
 			loss_fn = torch.nn.MSELoss()
 			print("input", world.dyn_pred, "target", torch.tensor(state[:-3]))
@@ -401,7 +408,50 @@ class KeyboardControl(object):
 		# next_state = next_state.data.cpu().numpy()[0]
 		world.dyn_pred = next_state
 		# TODO compare with get_transform returned in the next tick
-		print("dyn_model pred", next_state)
+		# print("dyn_model pred", next_state)
+
+	def record_retrain_data(self, world, horizon=50, sampling_radius = 2.0, outfile="long_states_retrain.csv"):
+		world.world.wait_for_tick()
+		cur_loc = world.vehicle.get_transform()
+		cur_vel = world.vehicle.get_velocity()
+		control = world.vehicle.get_control()
+		# print("get current state", hud.frame_number, hud.simulation_time)
+		print(cur_loc, cur_vel)
+
+		# concatenate future_wps within horizon
+		map = world.world.get_map()
+		cur_wp = map.get_waypoint(cur_loc.location)
+		future_wps = []
+		future_wps.append(cur_wp)
+
+		for j in range(horizon):
+			future_wps.append(random.choice(future_wps[-1].next(sampling_radius)))
+
+		future_wps_np = []
+		for future_wp in future_wps:
+			future_wps_np.append(np.array([future_wp.transform.location.x, future_wp.transform.location.y]))
+		future_wps_np = np.array(future_wps_np)
+		future_wps_np = future_wps_np - np.array([cur_wp.transform.location.x, cur_wp.transform.location.y])
+		# print("future_wps_np", future_wps_np.shape, future_wps_np.flatten().shape) #future_wps_np (51, 2) (102,)
+				  
+		# tick 
+		world.world .wait_for_tick()                 
+		
+		# t_2 get next state
+		next_loc = world.vehicle.get_transform()
+		next_vel = world.vehicle.get_velocity()
+
+		row = list(np.hstack((np.array([control.throttle, control.steer, control.brake]), \
+							  transform_to_arr(cur_loc), np.array([cur_vel.x, cur_vel.y, cur_vel.z]),\
+							  transform_to_arr(next_loc), np.array([next_vel.x, next_vel.y, next_vel.z]), \
+							  np.array([cur_loc.location.x, cur_loc.location.y])- np.array([cur_wp.transform.location.x, cur_wp.transform.location.y]), \
+							  future_wps_np.flatten(), \
+							  np.array([next_loc.location.x, next_loc.location.y])- np.array([cur_wp.transform.location.x, cur_wp.transform.location.y]))))
+
+		with open(outfile, 'a+') as csvFile:
+			writer = csv.writer(csvFile)
+			writer.writerow(row)
+			csvFile.close()
 
 	def get_e2c_controller(self, world):
 		# print("get_e2c_controller")
@@ -424,7 +474,7 @@ class KeyboardControl(object):
 
 			# print("z", z.size()) # torch.Size([1, 106]) 
 			# print(z)
-			u = world.nn_model(z)
+			u = world.nn_e2c_model(z)
 			# convert tensor to numpy array
 			u = u.data.cpu().numpy()[0]
 			# print("u ", u)
