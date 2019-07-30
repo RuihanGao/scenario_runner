@@ -20,6 +20,7 @@ results*.txt
 _out/
 data*/*
 # !data/processed.pkl # too large
+long_states*
 
 # Not adding models
 models/

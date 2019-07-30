@@ -751,7 +751,7 @@ def game_loop(args):
     pygame.init()
     pygame.font.init()
     world = None
-    outfile = "long_states_2.csv"
+    outfile = "long_states_dt.csv"
 
     try:
         client = carla.Client(args.host, args.port) #  worker_threads=1
@@ -820,6 +820,7 @@ def game_loop(args):
                     cur_loc = world.vehicle.get_transform()
                     cur_vel = world.vehicle.get_velocity()
                     control = world.vehicle.get_control()
+                    t1 = hud.simulation_time
                     # print("get current state", hud.frame_number, hud.simulation_time)
                     print(cur_loc, cur_vel)
 
@@ -847,6 +848,7 @@ def game_loop(args):
                     # t_2 get next state
                     next_loc = world.vehicle.get_transform()
                     next_vel = world.vehicle.get_velocity()
+                    t2 = hud.simulation_time
 
                     # TODO: save the states and transition
                     # df = pd.DataFrame({'cur_loc': transform_to_arr(cur_loc), \
@@ -858,12 +860,13 @@ def game_loop(args):
                     #                    'next_loc_rl': np.array([next_loc.location.x, next_loc.location.y])- np.array([cur_wp.transform.location.x, cur_wp.transform.location.y])})
                     # with open(outfile, 'a') as f:
                     #     df.to_csv(f)
+                    delta_t = t2-t1 # append time difference for dynamics model
                     row = list(np.hstack((np.array([control.throttle, control.steer, control.brake]), \
                                           transform_to_arr(cur_loc), np.array([cur_vel.x, cur_vel.y, cur_vel.z]),\
                                           transform_to_arr(next_loc), np.array([next_vel.x, next_vel.y, next_vel.z]), \
                                           np.array([cur_loc.location.x, cur_loc.location.y])- np.array([cur_wp.transform.location.x, cur_wp.transform.location.y]), \
                                           future_wps_np.flatten(), \
-                                          np.array([next_loc.location.x, next_loc.location.y])- np.array([cur_wp.transform.location.x, cur_wp.transform.location.y]))))
+                                          np.array([next_loc.location.x, next_loc.location.y])- np.array([cur_wp.transform.location.x, cur_wp.transform.location.y]), np.array(delta_t))))
 
                     with open(outfile, 'a+') as csvFile:
                         writer = csv.writer(csvFile)

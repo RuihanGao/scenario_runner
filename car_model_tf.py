@@ -1,3 +1,8 @@
+'''
+Two-layer feed-forward to approximate car model, for Gazebo simulation, tensorflow framework
+ref: https://github.com/854768750/car_model
+'''
+
 import tensorflow as tf
 import numpy as np
 import matplotlib.pyplot as plt

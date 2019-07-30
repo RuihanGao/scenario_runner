@@ -161,17 +161,18 @@ if __name__ == '__main__':
 	# Method 2: load data from "long_states.csv" collected with different starting points
 	num_wps = 50
 	MLP_model_path = 'models/MLP/MLP_model_long_states_{}.pth'.format(num_wps)
-
+	MLP_dict_path = MLP_model_path.replace('_model_', '_dict_')
+	print("dict_path", MLP_dict_path)
 	# model type
 	model = FC_coil(nx=106, ny=3)
 	optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 
 	# check if path exists
-	if os.path.exists(MLP_model_path):
+	if os.path.exists(MLP_dict_path):
 		print("load state_dict")
 		datafile = "long_states_retrain.csv"
 		#load the existing model and resume training
-		checkpoint = torch.load(MLP_model_path)
+		checkpoint = torch.load(MLP_dict_path)
 		model.load_state_dict(checkpoint['model_state_dict'])
 		optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
 		epoch = checkpoint['epoch']
@@ -192,6 +193,8 @@ if __name__ == '__main__':
 	z = []
 	u = []
 	line_count = 0
+	if_print = True
+
 	with open(datafile) as csv_file:
 		csv_reader = csv.reader(csv_file)
 		for row in csv_reader:
@@ -201,6 +204,13 @@ if __name__ == '__main__':
 			wps = row[-106:-2]
 			action = row[:3]
 			state = [speed, yaw]+wps
+			if if_print:
+				print("sample state and action")
+				print(state)
+				print(action)
+				if_print = False
+			print(action)
+
 			z.append(torch.from_numpy(np.array(state).astype(np.float32)))
 			u.append(torch.from_numpy(np.array(action).astype(np.float32)))
 			line_count += 1
@@ -253,7 +263,10 @@ if __name__ == '__main__':
 	            'model_state_dict': model.state_dict(),
 	            'optimizer_state_dict': optimizer.state_dict(),
 	            'loss_fn': loss_fn
-	            }, MLP_model_path)
+	            }, MLP_dict_path)
+
+	print("save the entire model")
+	torch.save(model, MLP_model_path)
 
 	print(model)
 	plt.plot(loss_values)

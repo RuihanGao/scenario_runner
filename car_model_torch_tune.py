@@ -1,22 +1,36 @@
+'''
+Try to use ray.tune for grid search, half way done
+ref: https://github.com/ray-project/ray/tree/master/python/ray/tune/examples
+'''
+
 import os, sys
 import numpy as np
+import argparse
 import matplotlib.pyplot as plt
 import math
 import time
 import csv
 import random
 
-from sklearn.model_selection import train_test_split
 import torch
 import torch.nn as nn
-from torch.autograd import Variable
-import torch.nn.init as init
 import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader
+from torchvision import datasets, transforms
+from sklearn.model_selection import train_test_split
 
+import ray 
+from ray import tune
+from ray.tune import track
+from ray.tune.schedulers import AsyncHyperBandScheduler
+
+from NN_controller import ControlDS
 from e2c_NN import ZUData
 
 torch.set_default_dtype(torch.float32)
+
+EPOCH_SIZE = 512
+TEST_SIZE = 256
 
 # build the network
 class Dyn_NN(nn.Module):
@@ -33,7 +47,142 @@ class Dyn_NN(nn.Module):
 		return self.layers(x)
 
 
+
+def train(model, optimizer, data_loader, device, loss_fn=F.nll_loss()):
+	model.train()
+	train_losses = []
+	for i, (data, target) in enumerate(data_loader):
+		if i*len(data) > EPOCH_SIZE:
+			return
+		data, target = data.to(device), trage.to(device)
+		optimizer.zero_grad()
+		output = model(data)
+		loss = loss_fn(output, target)
+		loss.backward()
+		optimizer.step()
+		train_losses.append(loss.item())
+	return np.mean(train_losses)
+
+def test(model, data_loader, device, loss_fn=F.nll_loss()):
+	model.eval()
+	test_losses = []
+	with torch.no_grad():
+		for i, (data, target) in enumerate(data_loader):
+			if i*len(data) > EPOCH_SIZE:
+				break
+			data, target = data.to(device), trage.to(device)
+			output = model(data)
+			loss = loss_fn(output, y)
+			test_losses.append(loss.item())
+	return np.mean(test_losses)
+
+def get_data_loaders(csv="long_states_dt.csv"):
+	result = []
+	line_count = 0
+	with open(csv) as csv_file:
+		csv_reader = csv.reader(csv_file)
+		for row in csv_reader:
+			result.append([float(i) for i in row])
+			line_count += 1
+
+	print("process {} lines".format(line_count))
+	# Note: if shuffle, traj in testing will not be continuous
+	# random.shuffle(result) # shuffle in the first dimension only
+	result = np.array(result)
+
+	# input
+	yaw = (result[:,7]/max_yaw_val).reshape([-1, 1])
+	speed = (np.sqrt(result[:,9]**2 + result[:,10]**2)/max_speed_val).reshape([-1, 1])
+	command_data = result[:,:2].reshape([-1, 2])
+	dt = result[:,-1].reshape([-1, 1])
+	input_data = np.concatenate((yaw, speed, command_data, dt), axis=1).astype(np.float32)
+
+	# output
+	delta_x = (result[:,12] - result[:,3]).reshape([-1, 1])
+	delta_y = (result[:,13] - result[:,4]).reshape([-1, 1])
+	speed_next = (np.sqrt(result[:,18]**2 + result[:,19]**2)/max_speed_val).reshape([-1, 1])
+	delta_v = (speed_next - speed).reshape([-1, 1])
+	delta_theta = (result[:,16] - result[:,7]).reshape([-1, 1])
+	output_data = np.concatenate((delta_x, delta_y, delta_v, delta_theta), axis=1).astype(np.float32)
+
+	# split the train and test datasets
+	train_ratio = 0.6
+	valid_ratio = 0.2
+	test_ratio = 1 - train_ratio - valid_ratio
+	train_size = int(train_ratio*line_count)
+	valid_size = int(valid_ratio*line_count)
+	test_size = int(test_ratio*line_count)
+
+
+	x_train = input_data[0:train_size,:]
+	y_train = output_data[0:train_size,:]
+
+	x_valid = input_data[train_size:train_size+valid_size,:]
+	y_valid = output_data[train_size:train_size+valid_size,:]
+
+	x_test = input_data[train_size+valid_size: train_size+valid_size+test_size,:]
+	y_test = output_data[train_size+valid_size: train_size+valid_size+test_size,:]
+
+	train_dataset = ZUData(z=x_train, u=y_train)
+	valid_dataset = ZUData(z=x_valid, u=y_valid)
+	test_dataset = ZUData(z=x_test, u=y_test)
+
+	train_loader = DataLoader(dataset=train_dataset, batch_size=128, shuffle=True)
+	valid_loader = DataLoader(dataset=valid_dataset, batch_size=128, shuffle=True)
+	test_loader = DataLoader(dataset=test_dataset, batch_size=128, shuffle=False)
+	
+	return train_loader, valid_loader, test_loader
+
+def train_dyn(config):
+	# use config to choose from grid search
+	device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+	train_loader, valid_loader, test_loader = get_data_loaders(csv="long_states_dt.csv")
+	model = Dyn_NN(nx=5, ny=4, nh=50)
+	optimizer = torch.optim.SGD(
+        model.parameters(), lr=config["lr"], momentum=config["momentum"])
+
+    while True:
+        train_loss = train(model, optimizer, train_loader, device)
+        test_loss = test(model, test_loader, device)
+        # TODO: check how to track loss instead of acc
+        track.log(mean_loss=test_loss)
+
+
 if __name__ == '__main__':
+	parser = argparse.ArgumentParser(description="PyTorch Car dynamics model")
+    parser.add_argument(
+        "--smoke-test", action="store_true", help="Finish quickly for testing")
+    parser.add_argument(
+        "--ray-redis-address",
+        help="Address of Ray cluster for seamless distributed execution.")
+    args = parser.parse_args()
+    if args.ray_redis_address:
+        ray.init(redis_address=args.ray_redis_address)    
+	
+    sched = AsyncHyperBandScheduler(
+        time_attr="training_iteration", metric="mean_loss")
+
+    # main difference
+    tune.run(
+        train_dyn,
+        name="exp",
+        scheduler=sched,
+        stop={
+            "mean_loss": 100,
+            "training_iteration": 100 if args.smoke_test else 500
+        },
+        resources_per_trial={
+            "cpu": 2,
+            "gpu": 1
+        },
+        num_samples=1 if args.smoke_test else 10,
+        config={
+            "lr": tune.sample_from(lambda spec: 10**(-10 * np.random.rand())),
+            "momentum": tune.uniform(0.1, 0.9)
+        })
+
+
+
 	# config dataset path
 
 	# Train a dynamics model
@@ -113,17 +262,9 @@ if __name__ == '__main__':
 	test_loader = DataLoader(dataset=test_dataset, batch_size=128, shuffle=False)
 	
 	if train:
-		gs_log = "models/MLP/" + MLP_model_path.split("/")[-1][:-4] + "_gs_log.csv"
-		with open(gs_log, 'w', newline='') as csvFile:
-			writer = csv.writer(csvFile)
-			writer.writerow(["lr", "last_train_loss", "last_valid_loss"])
-		lr_range = [0.0001, 0.001, 0.01, 0.1, 1]
-		# if conduct grid_search
-		# for lr in lr_range: # 0.01 is best
-		lr =0.01
 		model = Dyn_NN(nx=5, ny=4) # nx: yaw, speed, throttle, steer, dt; ny: delta_x, delta_y
 		print(model)
-		optimizer = torch.optim.SGD(model.parameters(), lr=lr)
+		optimizer = torch.optim.SGD(model.parameters(), lr=0.001)
 		loss_fn = torch.nn.MSELoss()
 
 		# config training & validation
@@ -179,12 +320,6 @@ if __name__ == '__main__':
 
 		print("save the entire model")
 		torch.save(model, MLP_model_path)
-			# if grid_search, save to logs
-			# row = [lr, train_loss_ep[-1], valid_loss_ep[-1]]
-			# with open(gs_log, 'a+') as csvFile:
-			# 	writer = csv.writer(csvFile)
-			# 	writer.writerow(row)
-			# 	csvFile.close()
 
 	# Load for resuming training
 	print("load state_dict")
@@ -206,9 +341,9 @@ if __name__ == '__main__':
 	# helper function for plots
 	def connectpoints(x,y,i,f=''):
 		# x, y are series; p1, p2 are indexer
-		x1, x2 = x[i][0], y[i][0]
-		y1, y2 = x[i][1], y[i][1]
-		plt.plot([x1,x2],[y1,y2],f)
+	    x1, x2 = x[i][0], y[i][0]
+	    y1, y2 = x[i][1], y[i][1]
+	    plt.plot([x1,x2],[y1,y2],f)
 
 	if plot:
 		# plot the loss values

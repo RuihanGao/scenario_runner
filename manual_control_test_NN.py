@@ -130,7 +130,7 @@ def get_actor_display_name(actor, truncate=250):
 
 class World(object):
 	# 'models/NN_model_relative_epo50.pth'
-	def __init__(self, carla_world, hud, \
+	def __init__(self, carla_world, hud, KeyboardControl=None, \
 				 nn_model_path= 'models/MLP/MLP_model_long_states_50.pth', \
 				 nn_e2c_model_path = 'models/MLP/MLP_model_ctv_logdepth_norm_catwp_50_5_WSE_Adam_monly_1000.pth', \
 				 e2c_model_path='models/E2C/E2C_model_ctv_logdepth_norm_5.pth', \
@@ -138,6 +138,7 @@ class World(object):
 		self.world = carla_world
 		self.mapname = carla_world.get_map().name
 		self.hud = hud
+		self.KeyboardControl = KeyboardControl
 		self.world.on_tick(hud.on_world_tick)
 		self.world.wait_for_tick(10.0)
 		self.vehicle = None
@@ -150,7 +151,7 @@ class World(object):
 					self.vehicle = vehicle
 		self.vehicle_name = self.vehicle.type_id
 		self.collision_sensor = CollisionSensor(self.vehicle, self.hud)
-		self.lane_invasion_sensor = LaneInvasionSensor(self.vehicle, self.hud)
+		self.lane_invasion_sensor = LaneInvasionSensor(self.vehicle, self.hud, self.KeyboardControl)
 		self.camera_manager = CameraManager(self.vehicle, self.hud)
 		self.camera_manager.set_sensor(0, notify=False)
 		self.controller = None
@@ -351,7 +352,8 @@ class KeyboardControl(object):
 		self._control.steer = control[1]
 
 
-	def get_nn_controller_wp(self, world, horizon=50, sampling_radius=2.0):
+	def get_nn_controller_wp(self, world, horizon=50, sampling_radius=2.0, \
+							 max_pos_val = 500, max_yaw_val = 180, max_speed_val = 40):
 		model = world.nn_model
 		cur_loc = world.vehicle.get_transform().location
 		print(world.hud.frame_number, "get cur_loc")
@@ -369,12 +371,20 @@ class KeyboardControl(object):
 			future_wps_np.append(np.array([future_wp.transform.location.x, future_wp.transform.location.y]))
 		future_wps_np = np.array(future_wps_np)
 		future_wps_np = future_wps_np - np.array([cur_wp.transform.location.x, cur_wp.transform.location.y])
+		
+		cur_vel = world.vehicle.get_velocity()
 
-		state = np.hstack((np.array([cur_loc.x, cur_loc.y])- np.array([cur_wp.transform.location.x, cur_wp.transform.location.y]), \
+		speed = math.sqrt(cur_vel.x**2+cur_vel.y**2)/max_speed_val
+		yaw = world.vehicle.get_transform().rotation.yaw
+		state = np.hstack((np.array([speed, yaw]),np.array([cur_loc.x, cur_loc.y])- np.array([cur_wp.transform.location.x, cur_wp.transform.location.y]), \
 					  future_wps_np.flatten()))
 		
+
+		print("state")
+		print(state)
 		state =  torch.from_numpy(state.astype(np.float32))
 		state = state.view(1, -1)
+
 
 		control = model(state)
 		control = control.data.cpu().numpy()[0]
@@ -753,10 +763,11 @@ class CollisionSensor(object):
 
 
 class LaneInvasionSensor(object):
-	def __init__(self, parent_actor, hud):
+	def __init__(self, parent_actor, hud, KeyboardControl=None):
 		self.sensor = None
 		self._parent = parent_actor
 		self._hud = hud
+		self._keyboardcontrol = KeyboardControl
 		world = self._parent.get_world()
 		bp = world.get_blueprint_library().find('sensor.other.lane_invasion')
 		self.sensor = world.spawn_actor(bp, carla.Transform(), attach_to=self._parent)
@@ -772,6 +783,12 @@ class LaneInvasionSensor(object):
 			return
 		text = ['%r' % str(x).split()[-1] for x in set(event.crossed_lane_markings)]
 		self._hud.notification('Crossed line %s' % ' and '.join(text))
+		# added by RH to trigger autopilot to collect data for retraining
+		if self._keyboardcontrol is not None and self._keyboardcontrol.retrain:
+			raise ValueError("switch to autopilot")
+			self._keyboardcontrol._autopilot_enabled = True # force to switch to autopilot
+			self._parent.set_autopilot(self._keyboardcontrol._autopilot_enabled)
+			self._hud.notification('Autopilot %s' % ('On' if self._keyboardcontrol._autopilot_enabled else 'Off'))
 
 
 # ==============================================================================
@@ -983,6 +1000,7 @@ def game_loop(args):
 		hud = HUD(args.width, args.height)
 		world = World(client.get_world(), hud)
 		controller = KeyboardControl(world, args.autopilot)
+		world.KeyboardControl = controller
 
 		clock = pygame.time.Clock()
 		while True:
