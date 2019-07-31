@@ -206,6 +206,11 @@ class World(object):
 			print("Scenario ended -- Terminating")
 			return False
 
+		# set all traffic lights to Green, it will still affect by one tick and not afterwards
+		traffic_light = self.vehicle.get_traffic_light()
+		if traffic_light is not None:
+			traffic_light.set_state(carla.TrafficLightState.Green)
+
 		self.hud.tick(self, self.mapname, clock)
 		return True
 
@@ -420,11 +425,12 @@ class KeyboardControl(object):
 		# TODO compare with get_transform returned in the next tick
 		# print("dyn_model pred", next_state)
 
-	def record_retrain_data(self, world, horizon=50, sampling_radius = 2.0, outfile="long_states_retrain.csv"):
+	def record_retrain_data(self, world, horizon=50, sampling_radius = 2.0, outfile="long_states_dt_retrain.csv"):
 		world.world.wait_for_tick()
 		cur_loc = world.vehicle.get_transform()
 		cur_vel = world.vehicle.get_velocity()
 		control = world.vehicle.get_control()
+		t1 = world.hud.simulation_time
 		# print("get current state", hud.frame_number, hud.simulation_time)
 		print(cur_loc, cur_vel)
 
@@ -450,13 +456,14 @@ class KeyboardControl(object):
 		# t_2 get next state
 		next_loc = world.vehicle.get_transform()
 		next_vel = world.vehicle.get_velocity()
+		t2 = world.hud.simulation_time
 
 		row = list(np.hstack((np.array([control.throttle, control.steer, control.brake]), \
 							  transform_to_arr(cur_loc), np.array([cur_vel.x, cur_vel.y, cur_vel.z]),\
 							  transform_to_arr(next_loc), np.array([next_vel.x, next_vel.y, next_vel.z]), \
 							  np.array([cur_loc.location.x, cur_loc.location.y])- np.array([cur_wp.transform.location.x, cur_wp.transform.location.y]), \
 							  future_wps_np.flatten(), \
-							  np.array([next_loc.location.x, next_loc.location.y])- np.array([cur_wp.transform.location.x, cur_wp.transform.location.y]))))
+							  np.array([next_loc.location.x, next_loc.location.y])- np.array([cur_wp.transform.location.x, cur_wp.transform.location.y]), np.array(t2-t1))))
 
 		with open(outfile, 'a+') as csvFile:
 			writer = csv.writer(csvFile)

@@ -1,4 +1,6 @@
-# %matplotlilb inline
+'''
+Train a NN controller
+'''
 import os, sys
 import numpy as np
 import math
@@ -76,7 +78,7 @@ class FC_coil(nn.Module):
 	"""
 	copy the full-connectin network from coil, adpted for MLP controller
 	"""
-	def __init__(self, nx=106, ny=2, nh=53, p=0.2):
+	def __init__(self, nx=106, ny=2, nh=53, p=0.1):
 		"""
 		original coil (512-256-3)
 		input: latent_embeddings dim_z = 106
@@ -119,7 +121,7 @@ def weighted_mse_loss(input,target):
 
 
 if __name__ == '__main__':
-	# Method 1: load from npy data with frame_number
+	# Method 1: For e2c with image input, load from npy data with frame_number
 	# num_wps = 50
 	# ds_dir = '/home/ruihan/scenario_runner/data_ctv_logdepth_norm_catwp_{}/'.format(num_wps)
 	# MLP_model_path = 'models/MLP/MLP_model_ctv_logdepth_norm_catwp_{}_5_WSE_Adam_monly_vy.pth'.format(num_wps)
@@ -158,7 +160,7 @@ if __name__ == '__main__':
 	# 	mt = np.hstack((m_i[:-3], np.array([yaw, speed]))).astype(np.float32)
 	# 	z.append(torch.from_numpy(mt))
 
-	# Method 2: load data from "long_states.csv" collected with different starting points
+	# Method 2: For pure state input, load data from "long_states.csv"
 	num_wps = 50
 	MLP_model_path = 'models/MLP/MLP_model_long_states_{}.pth'.format(num_wps)
 	MLP_dict_path = MLP_model_path.replace('_model_', '_dict_')
@@ -275,39 +277,6 @@ if __name__ == '__main__':
 	plt.savefig('models/MLP/{}_loss.png'.format(MLP_model_path.split("/")[-1][:-4]))
 	plt.show()
 
-	# # Train a dynamics model
-	# num_wps = 50
-	# MLP_model_path = 'models/MLP/MLP_model_dynamics_{}_Adam.pth'.format(num_wps)
-	# model = MLP_e2c(nx=7, ny=4) # nx: px, py, speed, yaw, throttle, steer, brake; ny:  px, py, speed, yaw
-	# z = []
-	# u = []
-	# line_count = 0	
-	# if_print = True
-	# max_pos_val = 500
-	# max_yaw_val = 180
-	# max_speed_val = 40
-	# with open("long_states_2.csv") as csv_file:
-	# 	csv_reader = csv.reader(csv_file)
-	# 	for row in csv_reader:
-	# 		# px = row[3]
-	# 		# py = row[4]
-	# 		# speed = math.sqrt(row[9]**2+row[10]**2)
-	# 		# yaw = row[7]
-	# 		row = [float(i) for i in row]
-	# 		action = row[:3]
-	# 		state = [row[3]/max_pos_val, row[4]/max_pos_val, math.sqrt(float(row[9])**2+float(row[10])**2)/max_speed_val, row[7]/max_yaw_val]
-	# 		next_state = [row[12]/max_pos_val, row[13]/max_pos_val, math.sqrt(float(row[18])**2+float(row[19])**2)/max_speed_val, row[16]/max_yaw_val]
-	# 		if if_print:
-	# 			print("action", action)
-	# 			print("state", state), 
-	# 			print("next_state", next_state)
-	# 			if_print = False
-	# 		state.extend(action) # concatenate the action to the state list
-	# 		z.append(torch.from_numpy(np.array(state).astype(np.float32)))
-	# 		u.append(torch.from_numpy(np.array(next_state).astype(np.float32)))
-	# 		line_count += 1
-
-
 	# parse csv data
 	# row = list(np.hstack((np.array([control.throttle, control.steer, control.brake]), \
 	#                       transform_to_arr(cur_loc), np.array([cur_vel.x, cur_vel.y, cur_vel.z]),\
@@ -315,10 +284,5 @@ if __name__ == '__main__':
 	#                       np.array([cur_loc.location.x, cur_loc.location.y])- np.array([cur_wp.transform.location.x, cur_wp.transform.location.y]), \
 	#                       future_wps_np.flatten(), \
 	#                       np.array([next_loc.location.x, next_loc.location.y])- np.array([cur_wp.transform.location.x, cur_wp.transform.location.y]))))
-	# action 3, cur_loc 6, cur_vel 3, next_loc 6, next_vel 3, 
+	# action 3, cur_loc 6, cur_vel 3, next_loc 6, next_vel 3,  dt 1
 	# relative loc 2 + 51*2 + 2
-
-	# TODO move data to GPU
-	# print("move model to cuda")
-	# e2c.cuda()
-	# model.cuda()

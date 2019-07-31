@@ -1,3 +1,7 @@
+'''
+Train a car dynamics model (two-layer NN) using PyTorch framework
+'''
+
 import os, sys
 import numpy as np
 import matplotlib.pyplot as plt
@@ -108,19 +112,26 @@ if __name__ == '__main__':
 	valid_dataset = ZUData(z=x_valid, u=y_valid)
 	test_dataset = ZUData(z=x_test, u=y_test)
 
-	train_loader = DataLoader(dataset=train_dataset, batch_size=128, shuffle=True)
-	valid_loader = DataLoader(dataset=valid_dataset, batch_size=128, shuffle=True)
-	test_loader = DataLoader(dataset=test_dataset, batch_size=128, shuffle=False)
-	
 	if train:
 		gs_log = "models/MLP/" + MLP_model_path.split("/")[-1][:-4] + "_gs_log.csv"
-		with open(gs_log, 'w', newline='') as csvFile:
-			writer = csv.writer(csvFile)
-			writer.writerow(["lr", "last_train_loss", "last_valid_loss"])
+		# with open(gs_log, 'w', newline='') as csvFile:
+		# 	writer = csv.writer(csvFile)
+		# 	writer.writerow(["lr", "last_train_loss", "last_valid_loss"])
 		lr_range = [0.0001, 0.001, 0.01, 0.1, 1]
+		batch_range = [16, 32, 64, 128, 256]
 		# if conduct grid_search
 		# for lr in lr_range: # 0.01 is best
 		lr =0.01
+		batch_size = 64
+		with open(gs_log, 'a+', newline='') as csvFile:
+			writer = csv.writer(csvFile)
+			writer.writerow(["batch_size", "last_train_loss", "last_valid_loss"])
+		# for batch_size in batch_range:
+
+		train_loader = DataLoader(dataset=train_dataset, batch_size=batch_size, shuffle=True)
+		valid_loader = DataLoader(dataset=valid_dataset, batch_size=batch_size, shuffle=True)
+		test_loader = DataLoader(dataset=test_dataset, batch_size=batch_size, shuffle=False)
+
 		model = Dyn_NN(nx=5, ny=4) # nx: yaw, speed, throttle, steer, dt; ny: delta_x, delta_y
 		print(model)
 		optimizer = torch.optim.SGD(model.parameters(), lr=lr)
@@ -179,12 +190,12 @@ if __name__ == '__main__':
 
 		print("save the entire model")
 		torch.save(model, MLP_model_path)
-			# if grid_search, save to logs
-			# row = [lr, train_loss_ep[-1], valid_loss_ep[-1]]
-			# with open(gs_log, 'a+') as csvFile:
-			# 	writer = csv.writer(csvFile)
-			# 	writer.writerow(row)
-			# 	csvFile.close()
+		# if grid_search, save to logs
+		row = [batch_size, np.mean(train_loss_ep[-10:]), np.mean(valid_loss_ep[-10:])]
+		with open(gs_log, 'a+') as csvFile:
+			writer = csv.writer(csvFile)
+			writer.writerow(row)
+			csvFile.close()
 
 	# Load for resuming training
 	print("load state_dict")
@@ -212,16 +223,16 @@ if __name__ == '__main__':
 
 	if plot:
 		# plot the loss values
+		plt.figure(0)
 		plt.plot(train_loss_ep)
 		plt.plot(valid_loss_ep)
 		plt.xlabel('Epoch number')
 		plt.ylabel('Loss')
 		plt.legend(['Train', "Validation"], loc='upper left')
 		plt.savefig('models/MLP/{}_loss.png'.format(MLP_model_path.split("/")[-1][:-4]))
-		plt.show()
+		# plt.show()
 
-		# plot the predicted trajectories
-
+	# plot the predicted trajectories
 	# test the model, random choose a sample, and plot the ground truth trajectory, and predicted trajectory
 	test_horizon = 5
 	# TODO data may be of different episode, resulting in discontinuous  ground truth traj
@@ -252,6 +263,7 @@ if __name__ == '__main__':
 	current_states = np.array(current_states)
 	pred_states = np.array(pred_states)
 	next_states = np.array(next_states)
+	plt.figure(1)
 	plt.scatter(current_states[:,0], current_states[:,1],c='b', marker='o', linewidth=2,linestyle='dashed', label='current')
 	plt.scatter(next_states[:,0], next_states[:,1],c='k', marker='D',linewidth=2, label='next')
 	plt.scatter(pred_states[:,0], pred_states[:,1],c='r', marker='X',linewidth=2, label='pred')
@@ -262,4 +274,4 @@ if __name__ == '__main__':
 		connectpoints(current_states,pred_states,i, f='r-')
 
 	plt.savefig('models/MLP/{}_pred_traj.png'.format(MLP_model_path.split("/")[-1][:-4]))
-	plt.show()
+	# plt.show()
